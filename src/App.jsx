@@ -13,10 +13,10 @@ import {
   doc, onSnapshot, query, where, serverTimestamp, setDoc, getDocs 
 } from 'firebase/firestore';
 
-// --- Firebase Config ---
-// PASTE THIS INSTEAD
+// --- Firebase Config (Production Ready) ---
+// This configuration is hardcoded for your specific project "epromdeploy"
 const firebaseConfig = {
-  apiKey: "AIzaSyAMOU-IK6UfKk75UR0P_Rs80z0uEsssQ9o", // Use your specific keys
+  apiKey: "AIzaSyAMOU-IK6UfKk75UR0P_Rs80z0uEsssQ9o",
   authDomain: "epromdeploy.firebaseapp.com",
   projectId: "epromdeploy",
   storageBucket: "epromdeploy.firebasestorage.app",
@@ -26,8 +26,12 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-// ... existing auth/db init ...
-const appId = 'idea-bank-v2'; // Hardcode the App ID
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// Fixed App ID for production to ensure data consistency
+const appId = 'idea-bank-production';
+
 // --- Utility Components ---
 const Card = ({ children, className = "" }) => (
   <div className={`bg-white rounded-xl shadow-sm border border-slate-200 ${className}`}>
