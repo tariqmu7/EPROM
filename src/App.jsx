@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Lightbulb, Users, FileText, CheckCircle, XCircle, 
   Settings, Plus, Trash2, LogOut, ChevronRight, 
-  Shield, UserCheck, Layout, Lock, AlertTriangle, Paperclip, Calendar 
+  Shield, UserCheck, Layout, Lock, AlertTriangle, Paperclip, Calendar, Loader 
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -90,37 +90,45 @@ export default function IdeaBankApp() {
         if (!snapshot.empty) {
           const data = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
           setUserData(data);
-          // If already logged in, redirect to correct dashboard
-          if (['admin', 'manager', 'employee'].includes(data.role)) {
+          // Auto-redirect if on login/landing pages
+          if (['landing', 'login-admin', 'login-employee'].includes(view) && data.role) {
              setView(data.role);
           }
         } else {
-            // User authenticated but no profile found (Edge Case recovery)
+            // Edge Case: User authenticated in Firebase Auth, but missing from Firestore
             if (u.email === 'adminT124@EPROM.com') {
-                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), { 
+                 // Auto-heal the admin account
+                 const newAdmin = { 
                     email: u.email, 
                     role: 'admin', 
                     name: 'Main Admin', 
                     status: 'active', 
                     dept: 'Management',
                     createdAt: serverTimestamp()
-                });
-                // Rerun will catch it or manual refresh
-                window.location.reload();
+                };
+                const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), newAdmin);
+                setUserData({ id: docRef.id, ...newAdmin });
+                setView('admin');
+            } else {
+                // Unknown user without profile -> Force logout to prevent sticking
+                console.log("No profile found for user, signing out.");
+                await signOut(auth);
+                setUser(null);
+                setUserData(null);
             }
         }
       } else {
         setUser(null);
         setUserData(null);
-        // Keep user on specific login page if they were there, otherwise go to landing
-        if (view !== 'login-admin' && view !== 'login-employee') {
+        // Only reset view if we were logged in
+        if (['admin', 'manager', 'employee'].includes(view)) {
             setView('landing');
         }
       }
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []); 
+  }, [view]); // Added view dependency to ensure redirects happen if view state is stale
 
   // --- Views ---
 
@@ -164,30 +172,52 @@ export default function IdeaBankApp() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [isLoggingIn, setIsLoggingIn] = useState(false);
 
     const handleLogin = async (e) => {
         e.preventDefault();
         setError('');
+        setIsLoggingIn(true);
         const cleanEmail = email.trim();
         const cleanPass = password.trim();
 
         try {
+            // 1. Try to login
             await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
-            // Auth listener will handle redirect
+            
+            // 2. Force check profile immediately (don't wait for listener)
+            const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'users'), where('email', '==', cleanEmail));
+            const snapshot = await getDocs(q);
+            
+            if (!snapshot.empty) {
+                 const data = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+                 setUserData(data);
+                 setView(data.role);
+            } else if (cleanEmail === 'adminT124@EPROM.com') {
+                 // Recovery for admin
+                 const newAdmin = { 
+                    email: cleanEmail, 
+                    role: 'admin', 
+                    name: 'Main Admin', 
+                    status: 'active', 
+                    dept: 'Management',
+                    createdAt: serverTimestamp()
+                };
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), newAdmin);
+                setView('admin');
+            } else {
+                setError("Profile not found.");
+                setIsLoggingIn(false);
+            }
+
         } catch (err) {
-            // Check if user is trying to use the "Master Key" credentials
+            // Check if user is trying to use the "Master Key" credentials but failed login (e.g. user doesn't exist yet)
             const isMasterCreds = cleanEmail === 'adminT124@EPROM.com' && cleanPass === '124T124';
             
             if (isMasterCreds) {
-                // If they used master creds and login failed, it means either:
-                // 1. User doesn't exist (We should create it)
-                // 2. User exists but password is different (We warn them)
-                
                 try {
-                    // Try creating the account
+                    // Try creating the account if it didn't exist
                     await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
-                    
-                    // If successful, ensure Firestore doc exists
                     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), { 
                         email: cleanEmail, 
                         role: 'admin', 
@@ -196,17 +226,18 @@ export default function IdeaBankApp() {
                         dept: 'Management',
                         createdAt: serverTimestamp()
                     });
-                    // Auth listener handles redirect
+                    setView('admin');
                 } catch (createErr) {
                     if (createErr.code === 'auth/email-already-in-use') {
-                        setError("Admin account already exists but the password is NOT '124T124'. Please log in with the password you set previously.");
+                        setError("Admin account exists, but the password is NOT '124T124'. Please use your actual password.");
                     } else {
                         setError("Setup failed: " + createErr.message);
                     }
+                    setIsLoggingIn(false);
                 }
             } else {
-                // Standard login failure
                 setError("Invalid credentials.");
+                setIsLoggingIn(false);
             }
         }
     };
@@ -225,7 +256,9 @@ export default function IdeaBankApp() {
                     <div><label className="block text-sm font-medium mb-1">Email</label><input className="w-full p-2.5 border rounded-lg" value={email} onChange={e=>setEmail(e.target.value)} required /></div>
                     <div><label className="block text-sm font-medium mb-1">Password</label><input type="password" className="w-full p-2.5 border rounded-lg" value={password} onChange={e=>setPassword(e.target.value)} required /></div>
                     {error && <p className="text-rose-600 text-sm bg-rose-50 p-2 rounded">{error}</p>}
-                    <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800">Login to Dashboard</Button>
+                    <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800" disabled={isLoggingIn}>
+                        {isLoggingIn ? <span className="flex items-center"><Loader className="w-4 h-4 mr-2 animate-spin"/> Verifying...</span> : "Login to Dashboard"}
+                    </Button>
                 </form>
                 <button onClick={() => setView('landing')} className="w-full text-center mt-6 text-sm text-slate-500 hover:underline">← Back to Portal Selection</button>
             </Card>
@@ -238,26 +271,24 @@ export default function IdeaBankApp() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [isLoggingIn, setIsLoggingIn] = useState(false);
 
     const handleAuth = async (e) => {
         e.preventDefault();
         setError('');
+        setIsLoggingIn(true);
         try {
             if (mode === 'signup') {
                 await createUserWithEmailAndPassword(auth, email, password);
-                // Create User Profile Request
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), {
-                    email,
-                    role: 'employee', 
-                    status: 'pending', 
-                    dept: 'Unassigned',
-                    createdAt: serverTimestamp()
+                    email, role: 'employee', status: 'pending', dept: 'Unassigned', createdAt: serverTimestamp()
                 });
                 alert("Account created! Please wait for Admin approval.");
-                // Note: Auth listener might try to log them in, but 'pending' status in Main Component logic (below) could handle lockout if we want strictness.
-                // For now, they will login but see limited/no view until approved.
+                // Note: Auth listener checks profile. If 'pending', we might want to show a message but for now they can login.
+                // We'll let the listener handle the redirect logic.
             } else {
                 await signInWithEmailAndPassword(auth, email, password);
+                // Listener handles redirect
             }
         } catch (err) {
             if (err.code === 'auth/email-already-in-use') {
@@ -265,6 +296,7 @@ export default function IdeaBankApp() {
             } else {
                 setError(err.message.replace('Firebase: ', ''));
             }
+            setIsLoggingIn(false);
         }
     };
 
@@ -288,7 +320,9 @@ export default function IdeaBankApp() {
                     <div><label className="block text-sm font-medium mb-1">Company Email</label><input type="email" className="w-full p-2.5 border rounded-lg" value={email} onChange={e=>setEmail(e.target.value)} required /></div>
                     <div><label className="block text-sm font-medium mb-1">Password</label><input type="password" className="w-full p-2.5 border rounded-lg" value={password} onChange={e=>setPassword(e.target.value)} required /></div>
                     {error && <p className="text-rose-600 text-sm bg-rose-50 p-2 rounded">{error}</p>}
-                    <Button type="submit" className="w-full">{mode === 'signup' ? 'Create Account' : 'Login'}</Button>
+                    <Button type="submit" className="w-full" disabled={isLoggingIn}>
+                        {isLoggingIn ? <span className="flex items-center"><Loader className="w-4 h-4 mr-2 animate-spin"/> Processing...</span> : (mode === 'signup' ? 'Create Account' : 'Login')}
+                    </Button>
                 </form>
                 <button onClick={() => setView('landing')} className="w-full text-center mt-6 text-sm text-slate-500 hover:underline">← Back to Portal Selection</button>
             </Card>
