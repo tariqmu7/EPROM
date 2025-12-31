@@ -1,79 +1,77 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Lightbulb, Users, FileText, CheckCircle, XCircle, 
-  Settings, Plus, Trash2, LogOut, ChevronRight, 
-  Shield, UserCheck, Layout, Lock, AlertTriangle, Paperclip, Calendar, Loader 
-} from 'lucide-react';
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut 
-} from 'firebase/auth';
-import { 
-  getFirestore, collection, addDoc, updateDoc, deleteDoc, 
-  doc, onSnapshot, query, where, serverTimestamp, setDoc, getDocs 
-} from 'firebase/firestore';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import AdminDashboard from './pages/AdminDashboard';
+import ManagerDashboard from './pages/ManagerDashboard';
+import EmployeeDashboard from './pages/EmployeeDashboard';
+import './App.css';
 
-// --- Firebase Config (Production Ready) ---
-const firebaseConfig = {
-  apiKey: "AIzaSyAMOU-IK6UfKk75UR0P_Rs80z0uEsssQ9o",
-  authDomain: "epromdeploy.firebaseapp.com",
-  projectId: "epromdeploy",
-  storageBucket: "epromdeploy.firebasestorage.app",
-  messagingSenderId: "179394609832",
-  appId: "1:179394609832:web:cf8d21ea2eef70990cb89d",
-  measurementId: "G-X5GVRLDBQQ"
-};
+// Protected Route Component
+function ProtectedRoute({ children, allowedRoles }) {
+  const { user, token } = useAuth();
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
 
-const appId = 'idea-bank-production';
+  if (allowedRoles && !allowedRoles.includes(user?.role)) {
+    return <Navigate to="/login" replace />;
+  }
 
-// --- Utility Components ---
-const Card = ({ children, className = "" }) => (
-  <div className={`bg-white rounded-xl shadow-sm border border-slate-200 ${className}`}>
-    {children}
-  </div>
-);
+  return children;
+}
 
-const Button = ({ children, onClick, variant = "primary", className = "", type = "button", disabled = false }) => {
-  const variants = {
-    primary: "bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-indigo-300",
-    success: "bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-300",
-    danger: "bg-rose-600 text-white hover:bg-rose-700 disabled:bg-rose-300",
-    outline: "border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:text-slate-300",
-    ghost: "text-slate-600 hover:bg-slate-100"
-  };
+function AppRoutes() {
   return (
-    <button 
-      type={type}
-      onClick={onClick} 
-      disabled={disabled}
-      className={`px-4 py-2 rounded-lg font-medium transition flex items-center justify-center gap-2 ${variants[variant]} ${className}`}
-    >
-      {children}
-    </button>
-  );
-};
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
 
-const Badge = ({ status }) => {
-  const styles = {
-    pending: "bg-amber-100 text-amber-800",
-    approved: "bg-emerald-100 text-emerald-800",
-    rejected: "bg-rose-100 text-rose-800",
-    review: "bg-blue-100 text-blue-800"
-  };
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/manager"
+        element={
+          <ProtectedRoute allowedRoles={['manager']}>
+            <ManagerDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/employee"
+        element={
+          <ProtectedRoute allowedRoles={['employee']}>
+            <EmployeeDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route path="/" element={<Navigate to="/login" replace />} />
+    </Routes>
+  );
+}
+
+function App() {
   return (
-    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide ${styles[status] || styles.pending}`}>
-      {status}
-    </span>
+    <Router>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </Router>
   );
-};
+}
 
-// --- Main App Component ---
+export default App;
 
-export default function IdeaBankApp() {
   const [user, setUser] = useState(null); 
   const [userData, setUserData] = useState(null); 
   const [view, setView] = useState('landing'); // landing, login-admin, login-employee, admin, manager, employee
