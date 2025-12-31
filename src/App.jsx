@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   Lightbulb, Users, FileText, CheckCircle, XCircle, 
   Settings, Plus, Trash2, LogOut, ChevronRight, 
-  Shield, UserCheck, Layout, Lock, AlertTriangle, Paperclip, Calendar, KeyRound 
+  Shield, UserCheck, Layout, Lock, AlertTriangle, Paperclip, Calendar 
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
-  getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, updatePassword, signInAnonymously 
+  getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut 
 } from 'firebase/auth';
 import { 
   getFirestore, collection, addDoc, updateDoc, deleteDoc, 
@@ -29,7 +29,6 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const appId = 'idea-bank-production';
-const DEFAULT_PASSWORD = 'password123'; // Default password for first-time users
 
 // --- Utility Components ---
 const Card = ({ children, className = "" }) => (
@@ -77,7 +76,7 @@ const Badge = ({ status }) => {
 export default function IdeaBankApp() {
   const [user, setUser] = useState(null); 
   const [userData, setUserData] = useState(null); 
-  const [view, setView] = useState('login'); // login, change-password, admin, manager, employee
+  const [view, setView] = useState('landing'); // landing, login-admin, login-employee, admin, manager, employee
   const [loading, setLoading] = useState(true);
 
   // --- Auth Listener ---
@@ -85,225 +84,215 @@ export default function IdeaBankApp() {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (u && u.email) {
         setUser(u);
-        // Fetch User Data
         const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'users'), where('email', '==', u.email));
         const snapshot = await getDocs(q);
         
         if (!snapshot.empty) {
           const data = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
           setUserData(data);
-          
-          // Check for Default Password Flag
-          if (data.isDefaultPassword) {
-            setView('change-password');
-          } else {
-            setView(data.role);
+          // If already logged in, redirect to correct dashboard
+          if (['admin', 'manager', 'employee'].includes(data.role)) {
+             setView(data.role);
           }
+        } else {
+            // User authenticated but no profile found (Edge Case recovery)
+            if (u.email === 'adminT124@EPROM.com') {
+                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), { 
+                    email: u.email, 
+                    role: 'admin', 
+                    name: 'Main Admin', 
+                    status: 'active', 
+                    dept: 'Management',
+                    createdAt: serverTimestamp()
+                });
+                // Rerun will catch it or manual refresh
+                window.location.reload();
+            }
         }
       } else {
         setUser(null);
         setUserData(null);
-        setView('login');
+        // Keep user on specific login page if they were there, otherwise go to landing
+        if (view !== 'login-admin' && view !== 'login-employee') {
+            setView('landing');
+        }
       }
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, []); 
 
-  // --- Seed Database ---
-  const seedDatabase = async () => {
-    try {
-        if (!auth.currentUser) await signInAnonymously(auth);
+  // --- Views ---
 
-        const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
-        const templatesRef = collection(db, 'artifacts', appId, 'public', 'data', 'templates');
-        const deptsRef = collection(db, 'artifacts', appId, 'public', 'data', 'departments');
-
-        // Create Departments
-        await addDoc(deptsRef, { name: 'IT' });
-        await addDoc(deptsRef, { name: 'HR' });
-        await addDoc(deptsRef, { name: 'Sales' });
-        await addDoc(deptsRef, { name: 'Operations' });
-
-        // Create Users with isDefaultPassword flag
-        await addDoc(usersRef, { email: 'adminT124@EPROM.com', role: 'admin', name: 'Main Admin', status: 'active', dept: 'Management', isDefaultPassword: true });
-        await addDoc(usersRef, { email: 'manager@eprom.com', role: 'manager', dept: 'IT', name: 'IT Manager', status: 'active', isDefaultPassword: true });
-        await addDoc(usersRef, { email: 'employee@eprom.com', role: 'employee', dept: 'IT', name: 'John Doe', status: 'active', isDefaultPassword: true });
-
-        // Create Template
-        await addDoc(templatesRef, {
-        category: 'Cost Saving',
-        fields: [
-            { id: 1, label: 'Estimated Savings ($)', type: 'number', required: true },
-            { id: 2, label: 'Implementation Date', type: 'date', required: true },
-            { id: 3, label: 'Priority Level', type: 'select', required: true, options: 'High,Medium,Low' },
-            { id: 4, label: 'Supporting Document', type: 'file', required: false },
-            { id: 5, label: 'Description', type: 'textarea', required: true }
-        ]
-        });
-
-        alert("Database Seeded! Login with 'adminT124@EPROM.com' and password 'password123'");
-    } catch (error) {
-        console.error("Seeding Error:", error);
-        alert("Error: " + error.message);
-    }
-  };
-
-  // --- Components ---
-
-  const ChangePassword = () => {
-    const [newPass, setNewPass] = useState('');
-    const [confirmPass, setConfirmPass] = useState('');
-    const [error, setError] = useState('');
-
-    const handleChange = async (e) => {
-      e.preventDefault();
-      if (newPass !== confirmPass) {
-        setError("Passwords do not match");
-        return;
-      }
-      if (newPass.length < 6) {
-        setError("Password must be at least 6 characters");
-        return;
-      }
-
-      try {
-        await updatePassword(user, newPass);
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', userData.id), {
-          isDefaultPassword: false
-        });
-        alert("Password updated successfully!");
-        setView(userData.role);
-      } catch (err) {
-        setError(err.message);
-      }
-    };
-
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-        <Card className="w-full max-w-md p-8">
-          <div className="text-center mb-6">
-            <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <KeyRound className="w-6 h-6 text-amber-600" />
+  const LandingPage = () => (
+    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+      <Card className="w-full max-w-md p-8 text-center space-y-8">
+        <div>
+            <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+              <Lightbulb className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-xl font-bold text-slate-900">Set New Password</h2>
-            <p className="text-sm text-slate-500 mt-2">
-              You are using the default system password. For security, please set a new personal password.
-            </p>
-          </div>
-          
-          <form onSubmit={handleChange} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">New Password</label>
-              <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} className="w-full p-2 border rounded" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Confirm Password</label>
-              <input type="password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)} className="w-full p-2 border rounded" required />
-            </div>
-            {error && <p className="text-xs text-rose-600">{error}</p>}
-            <Button type="submit" className="w-full">Update Password</Button>
-          </form>
-        </Card>
-      </div>
-    );
-  };
+            <h1 className="text-2xl font-bold text-slate-900">Idea Bank</h1>
+            <p className="text-slate-500">Innovation Management System</p>
+        </div>
+        <div className="space-y-4">
+            <button onClick={() => setView('login-employee')} className="w-full p-4 rounded-xl border-2 border-slate-200 bg-white hover:border-indigo-600 hover:bg-indigo-50 transition flex items-center justify-between group shadow-sm hover:shadow-md">
+                <div className="flex items-center gap-4">
+                    <div className="bg-indigo-100 p-2.5 rounded-lg text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition"><Users className="w-5 h-5" /></div>
+                    <div className="text-left">
+                        <span className="block font-bold text-slate-800">Employee Portal</span>
+                        <span className="text-xs text-slate-500">Submit & Track Ideas</span>
+                    </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-600" />
+            </button>
+            <button onClick={() => setView('login-admin')} className="w-full p-4 rounded-xl border-2 border-slate-200 bg-white hover:border-slate-800 hover:bg-slate-50 transition flex items-center justify-between group shadow-sm hover:shadow-md">
+                <div className="flex items-center gap-4">
+                    <div className="bg-slate-100 p-2.5 rounded-lg text-slate-600 group-hover:bg-slate-800 group-hover:text-white transition"><Shield className="w-5 h-5" /></div>
+                    <div className="text-left">
+                        <span className="block font-bold text-slate-800">Admin Portal</span>
+                        <span className="text-xs text-slate-500">System Management</span>
+                    </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-slate-800" />
+            </button>
+        </div>
+      </Card>
+    </div>
+  );
 
-  const Login = () => {
+  const AdminLogin = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
 
     const handleLogin = async (e) => {
-      e.preventDefault();
-      setError('');
-      
-      try {
-        // Attempt normal login
-        await signInWithEmailAndPassword(auth, email, password);
-      } catch (err) {
-        // Handle "First Time Login" simulation
-        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-           // If user tries default password
-           if (password === DEFAULT_PASSWORD) {
-               // Check if they exist in Firestore (Seeded user)
-               const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'users'), where('email', '==', email));
-               const snapshot = await getDocs(q);
-               
-               if (!snapshot.empty) {
-                   // User exists in DB but not Auth -> Create Auth account now
-                   try {
-                       await createUserWithEmailAndPassword(auth, email, password);
-                       return; // Auth listener handles the rest
-                   } catch (createErr) {
-                       setError("Error creating account: " + createErr.message);
-                   }
-               } else {
-                   setError("User not found. Please contact admin.");
-               }
-           } else {
-               setError("Invalid credentials.");
-           }
-        } else {
-           setError(err.message);
+        e.preventDefault();
+        setError('');
+        const cleanEmail = email.trim();
+        const cleanPass = password.trim();
+
+        try {
+            await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
+            // Auth listener will handle redirect
+        } catch (err) {
+            // Check if user is trying to use the "Master Key" credentials
+            const isMasterCreds = cleanEmail === 'adminT124@EPROM.com' && cleanPass === '124T124';
+            
+            if (isMasterCreds) {
+                // If they used master creds and login failed, it means either:
+                // 1. User doesn't exist (We should create it)
+                // 2. User exists but password is different (We warn them)
+                
+                try {
+                    // Try creating the account
+                    await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
+                    
+                    // If successful, ensure Firestore doc exists
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), { 
+                        email: cleanEmail, 
+                        role: 'admin', 
+                        name: 'Main Admin', 
+                        status: 'active', 
+                        dept: 'Management',
+                        createdAt: serverTimestamp()
+                    });
+                    // Auth listener handles redirect
+                } catch (createErr) {
+                    if (createErr.code === 'auth/email-already-in-use') {
+                        setError("Admin account already exists but the password is NOT '124T124'. Please log in with the password you set previously.");
+                    } else {
+                        setError("Setup failed: " + createErr.message);
+                    }
+                }
+            } else {
+                // Standard login failure
+                setError("Invalid credentials.");
+            }
         }
-      }
     };
 
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-        <Card className="w-full max-w-md p-8">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-              <Lightbulb className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900">Idea Bank</h1>
-            <p className="text-slate-500">EPROM Innovation Portal</p>
-          </div>
+        <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+            <Card className="w-full max-w-md p-8">
+                <div className="text-center mb-6">
+                    <div className="w-12 h-12 bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Shield className="w-6 h-6 text-white" />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-900">Admin Login</h2>
+                    <p className="text-sm text-slate-500">Authorized Personnel Only</p>
+                </div>
+                <form onSubmit={handleLogin} className="space-y-4">
+                    <div><label className="block text-sm font-medium mb-1">Email</label><input className="w-full p-2.5 border rounded-lg" value={email} onChange={e=>setEmail(e.target.value)} required /></div>
+                    <div><label className="block text-sm font-medium mb-1">Password</label><input type="password" className="w-full p-2.5 border rounded-lg" value={password} onChange={e=>setPassword(e.target.value)} required /></div>
+                    {error && <p className="text-rose-600 text-sm bg-rose-50 p-2 rounded">{error}</p>}
+                    <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800">Login to Dashboard</Button>
+                </form>
+                <button onClick={() => setView('landing')} className="w-full text-center mt-6 text-sm text-slate-500 hover:underline">← Back to Portal Selection</button>
+            </Card>
+        </div>
+    );
+  };
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
-              <input 
-                type="email" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                placeholder="user@eprom.com"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-              <input 
-                type="password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                placeholder="••••••••"
-                required
-              />
-            </div>
+  const EmployeeAuth = () => {
+    const [mode, setMode] = useState('login');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
 
-            {error && (
-              <div className="p-3 bg-rose-50 text-rose-700 text-sm rounded-lg flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                {error}
-              </div>
-            )}
+    const handleAuth = async (e) => {
+        e.preventDefault();
+        setError('');
+        try {
+            if (mode === 'signup') {
+                await createUserWithEmailAndPassword(auth, email, password);
+                // Create User Profile Request
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), {
+                    email,
+                    role: 'employee', 
+                    status: 'pending', 
+                    dept: 'Unassigned',
+                    createdAt: serverTimestamp()
+                });
+                alert("Account created! Please wait for Admin approval.");
+                // Note: Auth listener might try to log them in, but 'pending' status in Main Component logic (below) could handle lockout if we want strictness.
+                // For now, they will login but see limited/no view until approved.
+            } else {
+                await signInWithEmailAndPassword(auth, email, password);
+            }
+        } catch (err) {
+            if (err.code === 'auth/email-already-in-use') {
+                setError("Account exists. Please switch to Login.");
+            } else {
+                setError(err.message.replace('Firebase: ', ''));
+            }
+        }
+    };
 
-            <Button type="submit" className="w-full">Login</Button>
-          </form>
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+            <Card className="w-full max-w-md p-8">
+                <div className="text-center mb-6">
+                    <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Users className="w-6 h-6 text-white" />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-900">Employee Portal</h2>
+                    <p className="text-sm text-slate-500">Welcome to Idea Bank</p>
+                </div>
 
-          <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-             <p className="text-xs text-slate-400 mb-2">First time setup?</p>
-             <button onClick={seedDatabase} className="text-xs text-slate-500 hover:text-slate-800 underline">
-               Seed Database (Reset App)
-             </button>
-             <p className="text-[10px] text-slate-400 mt-2">Default Password: <strong>{DEFAULT_PASSWORD}</strong></p>
-          </div>
-        </Card>
-      </div>
+                <div className="flex bg-slate-100 p-1 rounded-lg mb-6">
+                    <button onClick={() => setMode('login')} className={`flex-1 py-2 text-xs font-bold rounded ${mode === 'login' ? 'bg-white shadow text-indigo-700' : 'text-slate-500'}`}>Login</button>
+                    <button onClick={() => setMode('signup')} className={`flex-1 py-2 text-xs font-bold rounded ${mode === 'signup' ? 'bg-white shadow text-indigo-700' : 'text-slate-500'}`}>Sign Up</button>
+                </div>
+
+                <form onSubmit={handleAuth} className="space-y-4">
+                    <div><label className="block text-sm font-medium mb-1">Company Email</label><input type="email" className="w-full p-2.5 border rounded-lg" value={email} onChange={e=>setEmail(e.target.value)} required /></div>
+                    <div><label className="block text-sm font-medium mb-1">Password</label><input type="password" className="w-full p-2.5 border rounded-lg" value={password} onChange={e=>setPassword(e.target.value)} required /></div>
+                    {error && <p className="text-rose-600 text-sm bg-rose-50 p-2 rounded">{error}</p>}
+                    <Button type="submit" className="w-full">{mode === 'signup' ? 'Create Account' : 'Login'}</Button>
+                </form>
+                <button onClick={() => setView('landing')} className="w-full text-center mt-6 text-sm text-slate-500 hover:underline">← Back to Portal Selection</button>
+            </Card>
+        </div>
     );
   };
 
@@ -326,8 +315,7 @@ export default function IdeaBankApp() {
     }, []);
 
     const approveUser = async (userId, dept, role) => {
-        // When approving, ensure isDefaultPassword is true so they must set password
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', userId), { status: 'active', dept, role, isDefaultPassword: true });
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', userId), { status: 'active', dept, role });
     };
 
     const addDepartment = async () => { if(newDept.trim()) { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'departments'), { name: newDept }); setNewDept(''); }};
@@ -359,7 +347,7 @@ export default function IdeaBankApp() {
                         <div className="flex gap-2 flex-wrap">
                             <select id={`dept-${u.id}`} className="p-2 border rounded text-sm">{departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}</select>
                             <select id={`role-${u.id}`} className="p-2 border rounded text-sm"><option value="employee">Employee</option><option value="manager">Manager</option><option value="admin">Admin</option></select>
-                            <Button variant="success" onClick={() => approveUser(u.id, document.getElementById(`dept-${u.id}`).value, document.getElementById(`role-${u.id}`).value)}>Approve & Reset Pass</Button>
+                            <Button variant="success" onClick={() => approveUser(u.id, document.getElementById(`dept-${u.id}`).value, document.getElementById(`role-${u.id}`).value)}>Approve</Button>
                         </div>
                     </Card>
                 ))}
@@ -437,8 +425,9 @@ export default function IdeaBankApp() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
-      {view === 'login' && <Login />}
-      {view === 'change-password' && <ChangePassword />}
+      {view === 'landing' && <LandingPage />}
+      {view === 'login-admin' && <AdminLogin />}
+      {view === 'login-employee' && <EmployeeAuth />}
       {view === 'admin' && <AdminPortal />}
       {view === 'manager' && <ManagerPortal />}
       {view === 'employee' && <EmployeePortal />}
