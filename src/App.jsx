@@ -1,729 +1,618 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  Bus, Car, Calendar, Clock, MapPin, Users, Settings, 
-  Plus, Check, X, AlertCircle, TrendingUp, Shield, 
-  LogOut, Briefcase, Map, Home, Truck, UserCircle, Phone, Navigation, Menu, Locate
+  Lightbulb, Users, FileText, CheckCircle, XCircle, 
+  Settings, Plus, Trash2, LogOut, ChevronRight, 
+  Shield, UserCheck, Layout, Lock, AlertTriangle, Paperclip, Calendar 
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
-  getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
+  getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, signInAnonymously 
 } from 'firebase/auth';
 import { 
   getFirestore, collection, addDoc, updateDoc, deleteDoc, 
-  doc, onSnapshot, query, serverTimestamp, writeBatch 
+  doc, onSnapshot, query, where, serverTimestamp, setDoc, getDocs 
 } from 'firebase/firestore';
 
-// --- Firebase Configuration & Initialization ---
-const firebaseConfig = {
-  apiKey: "AIzaSyAMOU-IK6UfKk75UR0P_Rs80z0uEsssQ9o",
-  authDomain: "epromdeploy.firebaseapp.com",
-  projectId: "epromdeploy",
-  storageBucket: "epromdeploy.firebasestorage.app",
-  messagingSenderId: "179394609832",
-  appId: "1:179394609832:web:cf8d21ea2eef70990cb89d",
-  measurementId: "G-X5GVRLDBQQ"
-};
-
+// --- Firebase Config ---
+const firebaseConfig = JSON.parse(__firebase_config);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = 'fleet-master-egypt-v2'; 
-
-// --- Constants & Mock Data ---
-// Added Lat/Lng for distance calculations (Approx centers)
-const AREAS = [
-  // Alexandria
-  { id: 'smouha', name: 'Alex - Smouha', lat: 31.2156, lng: 29.9553 },
-  { id: 'miami', name: 'Alex - Miami', lat: 31.2562, lng: 30.0074 },
-  { id: 'borg', name: 'Alex - Borg El Arab', lat: 30.9138, lng: 29.6738 }, // Industrial Zone
-  { id: 'agami', name: 'Alex - Agami', lat: 31.1276, lng: 29.7744 },
-  // North Coast
-  { id: 'alamein', name: 'New Alamein', lat: 30.8300, lng: 28.9500 },
-  // Cairo / Giza
-  { id: 'october', name: 'Cairo - 6th Oct', lat: 29.9722, lng: 30.9419 },
-  { id: 'maadi', name: 'Cairo - Maadi', lat: 29.9602, lng: 31.2569 },
-  { id: 'new_cairo', name: 'Cairo - New Cairo', lat: 30.0444, lng: 31.4658 },
-  // Other
-  { id: 'sokhna', name: 'Ain Sokhna', lat: 29.5898, lng: 32.3385 },
-];
-
-const SITE_LOCATIONS = {
-    'Site A': { lat: 30.9138, lng: 29.6738 }, // Assume Borg El Arab for demo
-    'HQ': { lat: 31.2156, lng: 29.9553 } // Smouha
-};
-
-// --- Helper: Haversine Distance (km) ---
-const getDistance = (lat1, lon1, lat2, lon2) => {
-  if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
-  const R = 6371; // Radius of the earth in km
-  const dLat = deg2rad(lat2 - lat1);
-  const dLon = deg2rad(lon2 - lon1);
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2); 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-  const d = R * c; // Distance in km
-  return d;
-};
-
-const deg2rad = (deg) => deg * (Math.PI/180);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'idea-bank-v2';
 
 // --- Utility Components ---
-
 const Card = ({ children, className = "" }) => (
   <div className={`bg-white rounded-xl shadow-sm border border-slate-200 ${className}`}>
     {children}
   </div>
 );
 
-const Badge = ({ children, type }) => {
-  const styles = {
-    success: "bg-emerald-100 text-emerald-800",
-    warning: "bg-amber-100 text-amber-800",
-    error: "bg-rose-100 text-rose-800",
-    blue: "bg-blue-100 text-blue-800",
-    neutral: "bg-slate-100 text-slate-800",
-    tier1: "bg-purple-100 text-purple-800 border border-purple-200",
-    tier2: "bg-indigo-50 text-indigo-700",
-    tier3: "bg-slate-50 text-slate-600",
+const Button = ({ children, onClick, variant = "primary", className = "", type = "button", disabled = false }) => {
+  const variants = {
+    primary: "bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-indigo-300",
+    success: "bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-300",
+    danger: "bg-rose-600 text-white hover:bg-rose-700 disabled:bg-rose-300",
+    outline: "border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:text-slate-300",
+    ghost: "text-slate-600 hover:bg-slate-100"
   };
   return (
-    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${styles[type] || styles.neutral}`}>
+    <button 
+      type={type}
+      onClick={onClick} 
+      disabled={disabled}
+      className={`px-4 py-2 rounded-lg font-medium transition flex items-center justify-center gap-2 ${variants[variant]} ${className}`}
+    >
       {children}
+    </button>
+  );
+};
+
+const Badge = ({ status }) => {
+  const styles = {
+    pending: "bg-amber-100 text-amber-800",
+    approved: "bg-emerald-100 text-emerald-800",
+    rejected: "bg-rose-100 text-rose-800",
+    review: "bg-blue-100 text-blue-800"
+  };
+  return (
+    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide ${styles[status] || styles.pending}`}>
+      {status}
     </span>
   );
 };
 
-// --- Main Application Component ---
+// --- Main App Component ---
 
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [role, setRole] = useState('admin'); 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
-  
-  // Data State
-  const [vehicles, setVehicles] = useState([]);
-  const [requests, setRequests] = useState([]);
-  
-  // Modal States
-  const [showRequestModal, setShowRequestModal] = useState(false);
-  const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState(null); 
-  const [assignmentMode, setAssignmentMode] = useState('single'); 
+export default function IdeaBankApp() {
+  const [user, setUser] = useState(null); // Firebase Auth User
+  const [userData, setUserData] = useState(null); // Firestore User Data (Role, Dept)
+  const [view, setView] = useState('login'); // login, admin, manager, employee
+  const [loading, setLoading] = useState(true);
 
-  // --- Auth & Data Fetching ---
-
+  // --- Auth Listener ---
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        await signInAnonymously(auth);
-      } catch (error) {
-        console.error("Authentication failed:", error);
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      if (u && u.email) {
+        setUser(u);
+        // Fetch Role Data
+        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'users'), where('email', '==', u.email));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          setUserData({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() });
+        }
+      } else {
+        setUser(null);
+        setUserData(null);
+        setView('login');
       }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
+      setLoading(false);
+    });
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
-
-    // Fetch Vehicles
-    const qVehicles = collection(db, 'artifacts', appId, 'public', 'data', 'vehicles');
-    const unsubVehicles = onSnapshot(qVehicles, (snapshot) => {
-      const v = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setVehicles(v);
-      if (v.length === 0) seedDatabase();
-    });
-
-    // Fetch Requests
-    const qRequests = collection(db, 'artifacts', appId, 'public', 'data', 'requests');
-    const unsubRequests = onSnapshot(qRequests, (snapshot) => {
-      setRequests(snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => b.createdAt?.seconds - a.createdAt?.seconds));
-    });
-
-    return () => {
-      unsubVehicles();
-      unsubRequests();
-    };
-  }, [user]);
-
+  // --- Seed Database for Demo ---
   const seedDatabase = async () => {
-    const batchPromises = [];
-    const vehicleCol = collection(db, 'artifacts', appId, 'public', 'data', 'vehicles');
-    
-    // Seed with Drivers
-    const drivers = ["Mohamed Ahmed", "Ali Hassan", "Omar Khaled", "Sayed Mahmoud", "Ibrahim Adel"];
-    
-    for (let i = 1; i <= 10; i++) {
-      batchPromises.push(addDoc(vehicleCol, {
-        plate: `ALX-${100 + i}`,
-        type: 'sedan',
-        model: i <= 4 ? 'Mercedes E200' : 'Toyota Corolla',
-        capacity: 4,
-        tier: i <= 4 ? 1 : 2,
-        status: 'available',
-        location: 'Smouha HQ',
-        driverName: drivers[i % drivers.length],
-        driverPhone: `010${Math.floor(Math.random() * 90000000 + 10000000)}`
-      }));
+    try {
+        // Ensure we are authenticated (at least anonymously) to write to the database
+        if (!auth.currentUser) {
+            await signInAnonymously(auth);
+        }
+
+        const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
+        const templatesRef = collection(db, 'artifacts', appId, 'public', 'data', 'templates');
+        const deptsRef = collection(db, 'artifacts', appId, 'public', 'data', 'departments');
+
+        // 1. Create Default Departments
+        await addDoc(deptsRef, { name: 'IT' });
+        await addDoc(deptsRef, { name: 'HR' });
+        await addDoc(deptsRef, { name: 'Sales' });
+        await addDoc(deptsRef, { name: 'Operations' });
+
+        // 2. Create Pre-approved User Metadata (Auth account created on first login)
+        // Main Admin
+        await addDoc(usersRef, { email: 'adminT124@EPROM.com', role: 'admin', name: 'Main Admin', status: 'active', dept: 'Management' });
+        // Other Roles
+        await addDoc(usersRef, { email: 'manager@eprom.com', role: 'manager', dept: 'IT', name: 'IT Manager', status: 'active' });
+        await addDoc(usersRef, { email: 'employee@eprom.com', role: 'employee', dept: 'IT', name: 'John Doe', status: 'active' });
+
+        // 3. Create a Form Template
+        await addDoc(templatesRef, {
+        category: 'Cost Saving',
+        fields: [
+            { id: 1, label: 'Estimated Savings ($)', type: 'number', required: true },
+            { id: 2, label: 'Implementation Date', type: 'date', required: true },
+            { id: 3, label: 'Priority Level', type: 'select', required: true, options: 'High,Medium,Low' },
+            { id: 4, label: 'Supporting Document', type: 'file', required: false },
+            { id: 5, label: 'Description', type: 'textarea', required: true }
+        ]
+        });
+
+        alert("Database Seeded! You can now Sign Up/Login as adminT124@EPROM.com to initialize your admin account.");
+    } catch (error) {
+        console.error("Seeding Error:", error);
+        alert("Error seeding database: " + error.message);
     }
-    for (let i = 1; i <= 10; i++) {
-      batchPromises.push(addDoc(vehicleCol, {
-        plate: `BUS-${200 + i}`,
-        type: 'bus',
-        model: 'Mercedes MCV',
-        capacity: 50,
-        tier: i <= 3 ? 1 : 3,
-        status: 'available',
-        location: 'Borg El Arab Site',
-        driverName: `Capt. ${drivers[i % drivers.length]}`,
-        driverPhone: `012${Math.floor(Math.random() * 90000000 + 10000000)}`
-      }));
-    }
-    await Promise.all(batchPromises);
   };
 
-  // --- Logic: Smart Grouping & Routing ---
+  // --- Components ---
 
-  const groupedTrips = useMemo(() => {
-    if (requests.length === 0) return [];
-    
-    const pending = requests.filter(r => r.status === 'pending');
-    const groups = {};
+  const Login = () => {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [mode, setMode] = useState('login'); // login, signup
 
-    pending.forEach(req => {
-      const timeWindow = req.time.split(':')[0]; 
-      const key = `${req.date}_${timeWindow}_${req.area}`; // Basic grouping by Area
+    const handleAuth = async (e) => {
+      e.preventDefault();
+      setError('');
       
-      if (!groups[key]) {
-        groups[key] = {
-          id: key,
-          date: req.date,
-          timeWindow: timeWindow,
-          area: req.area,
-          areaName: AREAS.find(a => a.id === req.area)?.name || req.area,
-          destination: req.destination,
-          requests: [],
-          totalPassengers: 0,
-          type: req.type
-        };
+      try {
+        let authUser;
+        if (mode === 'signup') {
+           const cred = await createUserWithEmailAndPassword(auth, email, password);
+           authUser = cred.user;
+           
+           // Check if pre-existing metadata exists (seeded user)
+           const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'users'), where('email', '==', email));
+           const snapshot = await getDocs(q);
+           
+           if (snapshot.empty) {
+               // Totally new user request
+               await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), {
+                   email,
+                   role: 'employee', 
+                   status: 'pending', 
+                   dept: 'Unassigned',
+                   createdAt: serverTimestamp()
+               });
+               alert("Account created! Please wait for Admin approval.");
+               return; // Stay on login/wait
+           } else {
+               // User existed in DB (seeded), but just created Auth password
+               alert("Account initialized successfully!");
+           }
+        } else {
+           const cred = await signInWithEmailAndPassword(auth, email, password);
+           authUser = cred.user;
+        }
+
+        // Fetch User Role Data
+        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'users'), where('email', '==', authUser.email));
+        const snapshot = await getDocs(q);
+
+        if (snapshot.empty) {
+            setError("User data not found. Please contact admin.");
+            return;
+        }
+
+        const data = snapshot.docs[0].data();
+        
+        if (data.status === 'pending') {
+            setError("Your account is pending approval.");
+            await signOut(auth);
+            return;
+        }
+
+        setUserData({ id: snapshot.docs[0].id, ...data });
+        setView(data.role);
+
+      } catch (err) {
+        console.error(err);
+        setError(err.message.replace('Firebase: ', ''));
       }
-      groups[key].requests.push(req);
-      groups[key].totalPassengers += req.passengers;
-    });
-
-    return Object.values(groups).sort((a,b) => b.totalPassengers - a.totalPassengers);
-  }, [requests]);
-
-  const calculateRoute = (groupRequests, arrivalTimeStr, areaId) => {
-    // 1. Determine Destination Coordinates
-    // For demo, we default to a generic site if not matching named sites
-    const destName = groupRequests[0].destination;
-    const destCoords = SITE_LOCATIONS[destName] || SITE_LOCATIONS['Site A']; 
-
-    // 2. Sort pickups by distance to destination (Furthest pickup first)
-    // If request has lat/lng, use it. If not, use Area center.
-    const areaCenter = AREAS.find(a => a.id === areaId);
-    
-    const sortedRequests = [...groupRequests].sort((a, b) => {
-      const distA = getDistance(a.lat || areaCenter?.lat, a.lng || areaCenter?.lng, destCoords.lat, destCoords.lng);
-      const distB = getDistance(b.lat || areaCenter?.lat, b.lng || areaCenter?.lng, destCoords.lat, destCoords.lng);
-      return distB - distA; // Descending: Furthest first
-    });
-
-    // 3. Generate Route Steps
-    const arrivalDate = new Date(`2000-01-01T${arrivalTimeStr}`);
-    const tripDuration = 45; // Base estimated duration
-    const tripStartTime = new Date(arrivalDate.getTime() - tripDuration * 60000);
-    
-    const stops = sortedRequests.map((req, index) => {
-      const pickupTime = new Date(tripStartTime.getTime() + (index * 5 * 60000));
-      return {
-        ...req,
-        estimatedPickup: pickupTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-    });
-
-    // 4. Generate Google Maps Link
-    // format: https://www.google.com/maps/dir/?api=1&origin=...&destination=...&waypoints=...
-    let gMapsLink = "#";
-    if (stops.length > 0) {
-      const origin = stops[0].lat ? `${stops[0].lat},${stops[0].lng}` : stops[0].pickup;
-      const destination = destCoords.lat ? `${destCoords.lat},${destCoords.lng}` : destName;
-      const waypoints = stops.slice(1).map(s => s.lat ? `${s.lat},${s.lng}` : s.pickup).join('|');
-      gMapsLink = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&waypoints=${encodeURIComponent(waypoints)}`;
-    }
-
-    return {
-      startTime: tripStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      stops: stops,
-      totalDuration: tripDuration + (groupRequests.length * 5),
-      gMapsLink
     };
-  };
 
-  // --- Actions ---
-
-  const handleCreateRequest = async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    
-    // Get stored coordinates if available
-    const lat = e.target.dataset.lat ? parseFloat(e.target.dataset.lat) : null;
-    const lng = e.target.dataset.lng ? parseFloat(e.target.dataset.lng) : null;
-
-    const newReq = {
-      type: formData.get('type'),
-      destination: formData.get('destination'),
-      area: formData.get('area'),
-      pickup: formData.get('pickup'),
-      lat, // Store Coords
-      lng, // Store Coords
-      date: formData.get('date'),
-      time: formData.get('time'),
-      passengers: parseInt(formData.get('passengers')),
-      notes: formData.get('notes'),
-      requesterId: user.uid,
-      requesterName: user.isAnonymous ? "Employee" : "User " + user.uid.slice(0,4),
-      status: 'pending',
-      assignedVehicleId: null,
-      createdAt: serverTimestamp()
-    };
-    
-    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'requests'), newReq);
-    setShowRequestModal(false);
-  };
-
-  // ... (handleAssignVehicle, handleCompleteTrip, handleAddVehicle reused exactly as is)
-  const handleAssignVehicle = async (vehicleId) => {
-    if (!selectedRequest) return;
-    const batch = writeBatch(db);
-    const vehicleRef = doc(db, 'artifacts', appId, 'public', 'data', 'vehicles', vehicleId);
-    batch.update(vehicleRef, { status: 'busy' });
-    const requestsToUpdate = assignmentMode === 'group' ? selectedRequest.requests : [selectedRequest]; 
-    requestsToUpdate.forEach(req => {
-      const reqRef = doc(db, 'artifacts', appId, 'public', 'data', 'requests', req.id);
-      batch.update(reqRef, { status: 'approved', assignedVehicleId: vehicleId });
-    });
-    await batch.commit();
-    setSelectedRequest(null);
-  };
-
-  const handleCompleteTrip = async (req) => {
-    const batch = writeBatch(db);
-    const reqRef = doc(db, 'artifacts', appId, 'public', 'data', 'requests', req.id);
-    batch.update(reqRef, { status: 'completed' });
-    if (req.assignedVehicleId) {
-      const vehicleRef = doc(db, 'artifacts', appId, 'public', 'data', 'vehicles', req.assignedVehicleId);
-      batch.update(vehicleRef, { status: 'available' });
-    }
-    await batch.commit();
-  };
-
-  const handleAddVehicle = async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'vehicles'), {
-      plate: formData.get('plate'),
-      type: formData.get('type'),
-      model: formData.get('model'),
-      capacity: parseInt(formData.get('capacity')),
-      tier: parseInt(formData.get('tier')),
-      driverName: formData.get('driverName'),
-      driverPhone: formData.get('driverPhone'),
-      status: 'available',
-      location: 'Alexandria HQ'
-    });
-    setShowAddVehicleModal(false);
-  };
-
-  // --- UI Components ---
-  // ... (Sidebar reused exactly as is)
-  const Sidebar = () => (
-    <>
-      {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-20 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
-      <div className={`fixed inset-y-0 left-0 z-30 w-64 bg-slate-900 text-slate-300 flex flex-col transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:fixed lg:inset-y-0`}>
-        <div className="p-6">
-          <div className="flex items-center justify-between text-white mb-8">
-            <div className="flex items-center space-x-2"><Truck className="w-8 h-8 text-blue-500" /><span className="text-xl font-bold tracking-tight">FleetMaster</span></div>
-            <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-slate-400 hover:text-white"><X className="w-6 h-6" /></button>
-          </div>
-          <div className="space-y-1">
-            <button onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}><TrendingUp className="w-5 h-5" /> <span>Dashboard</span></button>
-            {role === 'admin' && (<><button onClick={() => { setActiveTab('smart-dispatch'); setIsSidebarOpen(false); }} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'smart-dispatch' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : 'hover:bg-slate-800'}`}><Navigation className="w-5 h-5" /> <span>Smart Dispatch</span></button><button onClick={() => { setActiveTab('fleet'); setIsSidebarOpen(false); }} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'fleet' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}><Bus className="w-5 h-5" /> <span>Fleet Management</span></button></>)}
-            <button onClick={() => { setActiveTab('requests'); setIsSidebarOpen(false); }} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'requests' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}><Calendar className="w-5 h-5" /> <span>{role === 'admin' ? 'All Requests' : 'My Requests'}</span></button>
-          </div>
-        </div>
-        <div className="mt-auto p-6 border-t border-slate-800">
-          <div className="flex items-center justify-between mb-4"><div className="flex items-center space-x-2"><UserCircle className="w-8 h-8" /><div className="text-sm"><div className="text-white font-medium capitalize">{role} View</div><div className="text-xs text-slate-500">Alexandria HQ</div></div></div></div>
-          <button onClick={() => setRole(role === 'admin' ? 'employee' : 'admin')} className="w-full text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded border border-slate-700">Switch to {role === 'admin' ? 'Employee' : 'Admin'} Mode</button>
-        </div>
-      </div>
-    </>
-  );
-
-  const SmartDispatchView = () => {
     return (
-      <div className="space-y-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h2 className="text-xl md:text-2xl font-bold text-slate-800 flex items-center">
-              <Navigation className="w-6 h-6 mr-2 text-emerald-600" />
-              Smart Logistics
-            </h2>
-            <p className="text-sm text-slate-500 mt-1">Route optimization based on employee proximity.</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+        <Card className="w-full max-w-md p-8">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+              <Lightbulb className="w-8 h-8 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900">Idea Bank</h1>
+            <p className="text-slate-500">EPROM Innovation Portal</p>
           </div>
+
+          <div className="flex gap-2 mb-6 bg-slate-50 p-1 rounded-lg">
+             <button onClick={() => setMode('login')} className={`flex-1 py-2 text-xs font-bold uppercase rounded transition ${mode === 'login' ? 'bg-white shadow text-indigo-600' : 'text-slate-400'}`}>Login</button>
+             <button onClick={() => setMode('signup')} className={`flex-1 py-2 text-xs font-bold uppercase rounded transition ${mode === 'signup' ? 'bg-white shadow text-indigo-600' : 'text-slate-400'}`}>Sign Up</button>
+          </div>
+
+          <form onSubmit={handleAuth} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
+              <input 
+                type="email" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                placeholder="user@eprom.com"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+              <input 
+                type="password" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                placeholder="••••••••"
+                required
+                minLength={6}
+              />
+            </div>
+
+            {error && (
+              <div className="p-3 bg-rose-50 text-rose-700 text-sm rounded-lg flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                {error}
+              </div>
+            )}
+
+            <Button type="submit" className="w-full">
+              {mode === 'signup' ? 'Create Account' : 'Secure Login'}
+            </Button>
+          </form>
+
+          <div className="mt-8 pt-6 border-t border-slate-100 text-center">
+             <p className="text-xs text-slate-400 mb-2">System Admin Setup</p>
+             <button onClick={seedDatabase} className="text-xs text-slate-500 hover:text-slate-800 underline">
+               Seed Database (Reset App)
+             </button>
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
+  const AdminPortal = () => {
+    const [activeTab, setActiveTab] = useState('users'); // users, forms, depts
+    const [users, setUsers] = useState([]);
+    const [templates, setTemplates] = useState([]);
+    const [departments, setDepartments] = useState([]);
+    const [newDept, setNewDept] = useState('');
+    
+    // Form Builder State
+    const [newCategory, setNewCategory] = useState('');
+    const [formFields, setFormFields] = useState([{ label: 'Idea Title', type: 'text', required: true, locked: true }]);
+
+    useEffect(() => {
+        const unsubUsers = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'users'), (snap) => setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        const unsubTemplates = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'templates'), (snap) => setTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        const unsubDepts = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'departments'), (snap) => setDepartments(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        
+        return () => { unsubUsers(); unsubTemplates(); unsubDepts(); };
+    }, []);
+
+    const approveUser = async (userId, dept, role) => {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', userId), { status: 'active', dept, role });
+    };
+
+    const addDepartment = async () => {
+        if(!newDept.trim()) return;
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'departments'), { name: newDept });
+        setNewDept('');
+    };
+
+    const saveTemplate = async () => {
+        if (!newCategory || formFields.some(f => !f.label.trim())) {
+          alert("Please fill in category name and all field labels.");
+          return;
+        }
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'templates'), {
+            category: newCategory,
+            fields: formFields
+        });
+        setNewCategory('');
+        setFormFields([{ label: 'Idea Title', type: 'text', required: true, locked: true }]);
+    };
+
+    const addField = () => setFormFields([...formFields, { label: '', type: 'text', required: false }]);
+    const updateField = (idx, key, val) => {
+        const updated = [...formFields];
+        updated[idx][key] = val;
+        setFormFields(updated);
+    };
+    const removeField = (idx) => setFormFields(formFields.filter((_, i) => i !== idx));
+
+    return (
+      <div className="p-6 max-w-6xl mx-auto">
+        <header className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Admin Portal</h1>
+            <p className="text-slate-500">Logged in as: {userData.email}</p>
+          </div>
+          <Button variant="outline" onClick={() => signOut(auth)}><LogOut className="w-4 h-4" /> Logout</Button>
+        </header>
+
+        <div className="flex gap-4 mb-6 overflow-x-auto pb-2">
+            {['users', 'forms', 'depts'].map(tab => (
+                <Button key={tab} variant={activeTab === tab ? 'primary' : 'outline'} onClick={() => setActiveTab(tab)} className="capitalize">
+                    {tab === 'depts' ? 'Departments' : tab}
+                </Button>
+            ))}
         </div>
 
-        {groupedTrips.length === 0 ? (
-           <div className="text-center py-12 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-300">
-             <Check className="w-12 h-12 mx-auto mb-3 opacity-50 text-emerald-500" />
-             <p>All clear! No pending requests to optimize.</p>
-           </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-6">
-            {groupedTrips.map((group) => {
-              const routeData = calculateRoute(group.requests, group.requests[0].time, group.area);
-              
-              return (
-                <Card key={group.id} className="border-l-4 border-l-emerald-500 overflow-hidden">
-                  <div className="p-4 md:p-6">
-                    <div className="flex flex-col md:flex-row justify-between items-start mb-6 gap-4">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <h3 className="text-lg font-bold text-slate-900 flex items-center flex-wrap">
-                            {group.areaName} <span className="text-slate-400 mx-2">→</span> {group.destination}
-                          </h3>
-                          <Badge type="tier1">{group.requests.length} Pax</Badge>
+        {activeTab === 'users' && (
+            <div className="grid gap-4">
+                <h3 className="font-bold text-lg">Pending Approvals</h3>
+                {users.filter(u => u.status === 'pending').map(u => (
+                    <Card key={u.id} className="p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
+                        <div>
+                            <div className="font-bold text-slate-800">{u.email}</div>
+                            <div className="text-sm text-slate-500">Created: {new Date(u.createdAt?.seconds * 1000).toLocaleDateString()}</div>
                         </div>
-                        <div className="text-sm text-slate-500 flex flex-wrap items-center gap-4">
-                          <span className="flex items-center"><Calendar className="w-4 h-4 mr-1"/> {group.date}</span>
-                          <span className="flex items-center"><Clock className="w-4 h-4 mr-1"/> Arrival: {group.timeWindow}:00</span>
+                        <div className="flex gap-2 items-center flex-wrap">
+                            <select id={`dept-${u.id}`} className="p-2 border rounded text-sm">
+                                {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                            </select>
+                            <select id={`role-${u.id}`} className="p-2 border rounded text-sm">
+                                <option value="employee">Employee</option>
+                                <option value="manager">Manager</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                            <Button variant="success" onClick={() => approveUser(u.id, document.getElementById(`dept-${u.id}`).value, document.getElementById(`role-${u.id}`).value)}>Approve</Button>
                         </div>
-                      </div>
-                      <div className="flex space-x-2 w-full md:w-auto">
-                        <a 
-                          href={routeData.gMapsLink} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          className="flex-1 md:flex-none bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 shadow-sm transition font-medium flex items-center justify-center"
-                        >
-                           <MapPin className="w-4 h-4 mr-2 text-red-500" />
-                           Map Route
-                        </a>
-                        <button 
-                          onClick={() => {
-                            setSelectedRequest(group);
-                            setAssignmentMode('group');
-                          }}
-                          className="flex-1 md:flex-none bg-emerald-600 text-white px-6 py-2 rounded-lg hover:bg-emerald-700 shadow-sm transition font-medium flex items-center justify-center"
-                        >
-                          Assign Bus/Car
-                        </button>
-                      </div>
-                    </div>
+                    </Card>
+                ))}
+                {users.filter(u => u.status === 'pending').length === 0 && <p className="text-slate-400 italic">No pending requests.</p>}
 
-                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center justify-between">
-                        <span className="flex items-center"><Map className="w-4 h-4 mr-2" /> Optimized Sequence (Furthest to Closest)</span>
-                        <span className="text-emerald-600">Est. Trip: {routeData.totalDuration} min</span>
-                      </h4>
-                      
-                      <div className="relative pl-4 space-y-6 border-l-2 border-slate-200 ml-2">
-                        {routeData.stops.map((stop, idx) => (
-                          <div key={idx} className="relative">
-                            <div className="absolute -left-[21px] top-1 w-4 h-4 rounded-full bg-white border-2 border-blue-500 z-10"></div>
-                            <div className="flex justify-between items-start">
-                              <div className="pr-2">
-                                <p className="font-medium text-slate-800 text-sm break-words">{stop.pickup}</p>
-                                <div className="flex items-center space-x-2 text-xs text-slate-500">
-                                   <span>{stop.requesterName}</span>
-                                   {stop.lat && <span className="bg-blue-100 text-blue-700 px-1.5 rounded text-[10px]">GPS Verified</span>}
-                                </div>
-                              </div>
-                              <div className="text-right whitespace-nowrap">
-                                <span className="block text-sm font-bold text-blue-600">{stop.estimatedPickup}</span>
-                                <span className="text-[10px] text-slate-400">Pickup</span>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                        
-                        {/* Destination */}
-                        <div className="relative">
-                           <div className="absolute -left-[21px] top-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-emerald-500 z-10"></div>
-                           <div className="flex justify-between items-start">
-                              <div>
-                                <p className="font-bold text-slate-900 text-sm">{group.destination}</p>
-                              </div>
-                              <div className="text-right whitespace-nowrap">
-                                <span className="block text-sm font-bold text-emerald-600">{group.timeWindow}:00</span>
-                                <span className="text-[10px] text-slate-400">Arrival</span>
-                              </div>
-                           </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                <h3 className="font-bold text-lg mt-8">Active Users</h3>
+                <Card className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead className="bg-slate-50 border-b">
+                            <tr><th className="p-4 text-sm font-medium">Email</th><th className="p-4 text-sm font-medium">Role</th><th className="p-4 text-sm font-medium">Dept</th><th className="p-4 text-sm font-medium">Action</th></tr>
+                        </thead>
+                        <tbody>
+                            {users.filter(u => u.status === 'active').map(u => (
+                                <tr key={u.id} className="border-b hover:bg-slate-50">
+                                    <td className="p-4">{u.email}</td>
+                                    <td className="p-4 capitalize"><Badge status={u.role === 'admin' ? 'review' : 'approved'} /> {u.role}</td>
+                                    <td className="p-4">{u.dept}</td>
+                                    <td className="p-4"><button className="text-rose-600"><Trash2 className="w-4 h-4"/></button></td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </Card>
-              );
-            })}
-          </div>
+            </div>
+        )}
+
+        {activeTab === 'depts' && (
+             <div className="max-w-2xl">
+                 <div className="flex gap-2 mb-6">
+                     <input className="flex-1 p-2 border rounded" placeholder="New Department Name" value={newDept} onChange={e => setNewDept(e.target.value)} />
+                     <Button onClick={addDepartment} disabled={!newDept}>Add Dept</Button>
+                 </div>
+                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                     {departments.map(d => (
+                         <Card key={d.id} className="p-4 flex justify-between items-center">
+                             <span className="font-bold text-slate-700">{d.name}</span>
+                             <button onClick={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'departments', d.id))} className="text-slate-400 hover:text-rose-600"><Trash2 className="w-4 h-4"/></button>
+                         </Card>
+                     ))}
+                 </div>
+             </div>
+        )}
+
+        {activeTab === 'forms' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div>
+                    <h3 className="font-bold text-lg mb-4">Form Builder</h3>
+                    <Card className="p-6 space-y-4">
+                        <input className="w-full p-2 border rounded mb-2" placeholder="Category Name" value={newCategory} onChange={e => setNewCategory(e.target.value)} />
+                        
+                        <div className="space-y-3">
+                            {formFields.map((field, idx) => (
+                                <div key={idx} className="bg-slate-50 p-3 rounded border space-y-2">
+                                    <div className="flex gap-2">
+                                        <input className="flex-1 p-1 border rounded text-sm" placeholder="Label" value={field.label} disabled={field.locked} onChange={e => updateField(idx, 'label', e.target.value)} />
+                                        <select className="p-1 border rounded text-sm" value={field.type} disabled={field.locked} onChange={e => updateField(idx, 'type', e.target.value)}>
+                                            <option value="text">Text</option>
+                                            <option value="number">Number</option>
+                                            <option value="textarea">Long Text</option>
+                                            <option value="date">Date</option>
+                                            <option value="select">Dropdown</option>
+                                            <option value="file">Attachment</option>
+                                        </select>
+                                        {!field.locked && <button onClick={() => removeField(idx)} className="text-rose-500"><XCircle className="w-5 h-5"/></button>}
+                                    </div>
+                                    {field.type === 'select' && (
+                                        <input className="w-full p-1 border rounded text-sm" placeholder="Options (comma separated)" value={field.options || ''} onChange={e => updateField(idx, 'options', e.target.value)} />
+                                    )}
+                                </div>
+                            ))}
+                            <Button variant="outline" className="w-full text-sm" onClick={addField}><Plus className="w-4 h-4"/> Add Field</Button>
+                        </div>
+                        <Button className="w-full" onClick={saveTemplate} disabled={!newCategory}>Save Template</Button>
+                    </Card>
+                </div>
+                <div>
+                    <h3 className="font-bold text-lg mb-4">Existing Categories</h3>
+                    <div className="space-y-4">
+                        {templates.map(t => (
+                            <Card key={t.id} className="p-4 flex justify-between">
+                                <div><h4 className="font-bold text-indigo-700">{t.category}</h4><p className="text-xs text-slate-500">{t.fields.length} Fields</p></div>
+                                <button onClick={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'templates', t.id))} className="text-slate-400 hover:text-rose-600"><Trash2 className="w-4 h-4" /></button>
+                            </Card>
+                        ))}
+                    </div>
+                </div>
+            </div>
         )}
       </div>
     );
   };
 
-  const RequestModal = () => {
-    const [locationStatus, setLocationStatus] = useState('');
-    const [coords, setCoords] = useState(null);
+  const ManagerPortal = () => {
+    const [ideas, setIdeas] = useState([]);
+    useEffect(() => {
+        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'ideas'), where('department', '==', userData.dept));
+        const unsubscribe = onSnapshot(q, (snap) => setIdeas(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        return () => unsubscribe();
+    }, [userData]);
 
-    const handleGetLocation = () => {
-        setLocationStatus('detecting');
-        if (!navigator.geolocation) {
-            setLocationStatus('error');
-            return;
-        }
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const { latitude, longitude } = position.coords;
-                setCoords({ lat: latitude, lng: longitude });
-                
-                // Auto-detect closest area
-                let closest = null;
-                let minDst = Infinity;
-                AREAS.forEach(area => {
-                    const d = getDistance(latitude, longitude, area.lat, area.lng);
-                    if (d < minDst) {
-                        minDst = d;
-                        closest = area;
-                    }
-                });
-                
-                // Update select if found
-                if (closest) {
-                    const select = document.querySelector('select[name="area"]');
-                    if(select) select.value = closest.id;
-                }
-                setLocationStatus('success');
-            },
-            () => {
-                setLocationStatus('error');
-            }
-        );
+    const updateStatus = async (id, status) => {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'ideas', id), { status });
     };
 
     return (
-      <div className={`fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 ${!showRequestModal && 'hidden'}`}>
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-          <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-            <h3 className="text-xl font-bold text-slate-800">New Trip Request</h3>
-            <button onClick={() => setShowRequestModal(false)}><X className="w-5 h-5 text-slate-400" /></button>
-          </div>
-          <form onSubmit={handleCreateRequest} className="p-6 space-y-4" data-lat={coords?.lat} data-lng={coords?.lng}>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Trip Type</label>
-                <select name="type" className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700">
-                  <option value="overtime">Overtime</option>
-                  <option value="custom">Custom Trip</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Target Arrival</label>
-                <input type="time" name="time" required className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700" />
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
-                <input type="date" name="date" required className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700" />
-              </div>
-              <div>
-                 <label className="block text-sm font-medium text-slate-700 mb-1">Passengers</label>
-                 <input type="number" name="passengers" min="1" max="50" defaultValue="1" className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700" />
-              </div>
-            </div>
+      <div className="p-6 max-w-6xl mx-auto">
+        <header className="flex justify-between items-center mb-8">
+          <div><h1 className="text-2xl font-bold text-slate-900">Manager Portal</h1><p className="text-slate-500">Department: <span className="font-bold text-indigo-600">{userData.dept}</span></p></div>
+          <Button variant="outline" onClick={() => signOut(auth)}><LogOut className="w-4 h-4" /> Logout</Button>
+        </header>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Pickup Location</label>
-              <div className="flex gap-2 mb-2">
-                 <button 
-                    type="button" 
-                    onClick={handleGetLocation}
-                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition text-sm ${
-                        locationStatus === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 
-                        locationStatus === 'detecting' ? 'bg-slate-100 border-slate-200 text-slate-500' :
-                        'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                    }`}
-                 >
-                    <Locate className="w-4 h-4" /> 
-                    {locationStatus === 'success' ? 'Location Detected' : locationStatus === 'detecting' ? 'Detecting...' : 'Detect My Location'}
-                 </button>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-2">
-                  <select name="area" className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700">
-                    {AREAS.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                  <input type="text" name="pickup" placeholder="Building/Street Name" required className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700" />
-              </div>
-              {coords && <p className="text-[10px] text-emerald-600 mt-1">GPS: {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}</p>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Destination</label>
-              <input type="text" name="destination" placeholder="e.g. Site A" required className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700" />
-            </div>
-            
-            <div>
-               <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
-               <input name="notes" className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700" placeholder="Optional" />
-            </div>
-
-            <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 font-medium transition">
-              Submit Request
-            </button>
-          </form>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {ideas.length === 0 && <p className="text-slate-500 italic col-span-3 text-center py-10">No pending ideas for {userData.dept}.</p>}
+            {ideas.map(idea => (
+                <Card key={idea.id} className="flex flex-col h-full">
+                    <div className="p-5 border-b border-slate-100 flex-1">
+                        <div className="flex justify-between items-start mb-2"><Badge status={idea.status} /><span className="text-xs text-slate-400">{new Date(idea.createdAt?.seconds * 1000).toLocaleDateString()}</span></div>
+                        <h3 className="font-bold text-lg text-slate-800 mb-1">{idea.data['Idea Title']}</h3>
+                        <div className="space-y-2 bg-slate-50 p-3 rounded text-sm mt-4">
+                            {Object.entries(idea.data).map(([key, val]) => (
+                                key !== 'Idea Title' && (
+                                    <div key={key}>
+                                        <span className="font-bold text-slate-700 block text-xs uppercase">{key}</span>
+                                        {key.includes('(Attachment)') ? (
+                                           <a href={val} download={`attachment_${key}`} className="text-indigo-600 underline flex items-center gap-1"><Paperclip className="w-3 h-3"/> Download File</a>
+                                        ) : ( <span className="text-slate-600 break-words">{val}</span> )}
+                                    </div>
+                                )
+                            ))}
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400"><UserCheck className="w-3 h-3 inline mr-1" /> {idea.submittedBy}</div>
+                    </div>
+                    {idea.status === 'pending' && (
+                        <div className="p-4 bg-slate-50 flex gap-2">
+                            <Button variant="success" className="flex-1 text-sm" onClick={() => updateStatus(idea.id, 'approved')}>Approve</Button>
+                            <Button variant="danger" className="flex-1 text-sm" onClick={() => updateStatus(idea.id, 'rejected')}>Reject</Button>
+                        </div>
+                    )}
+                </Card>
+            ))}
         </div>
       </div>
     );
   };
 
-  // Reuse other modal components
-  // ... (VehicleList, RequestsList, AddVehicleModal, AssignmentModal reused exactly as is)
-  const VehicleList = () => (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl md:text-2xl font-bold text-slate-800">Fleet</h2>
-        <button onClick={() => setShowAddVehicleModal(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 text-sm md:text-base md:px-4 rounded-lg flex items-center space-x-2 transition"><Plus className="w-4 h-4" /><span className="hidden md:inline">Add Vehicle</span><span className="md:hidden">Add</span></button>
-      </div>
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[600px]">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Vehicle</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Driver Info</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Tier</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Status</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {vehicles.map(v => (
-                <tr key={v.id} className="hover:bg-slate-50 transition">
-                  <td className="px-6 py-4"><div className="font-medium text-slate-900">{v.plate}</div><div className="text-sm text-slate-500">{v.model} ({v.capacity} seats)</div></td>
-                  <td className="px-6 py-4"><div className="flex items-center space-x-2 text-sm text-slate-700"><UserCircle className="w-4 h-4 text-slate-400" /><span>{v.driverName || 'Unassigned'}</span></div><div className="flex items-center space-x-2 text-xs text-slate-500 mt-1"><Phone className="w-3 h-3" /><span>{v.driverPhone || 'No Phone'}</span></div></td>
-                  <td className="px-6 py-4"><Badge type={`tier${v.tier}`}>Tier {v.tier}</Badge></td>
-                  <td className="px-6 py-4"><Badge type={v.status === 'available' ? 'success' : v.status === 'busy' ? 'warning' : 'error'}>{v.status}</Badge></td>
-                  <td className="px-6 py-4"><button onClick={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'vehicles', v.id))} className="text-rose-600 hover:text-rose-800 p-2"><X className="w-4 h-4" /></button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
+  const EmployeePortal = () => {
+    const [activeTab, setActiveTab] = useState('submit');
+    const [templates, setTemplates] = useState([]);
+    const [selectedTemplate, setSelectedTemplate] = useState(null);
+    const [formData, setFormData] = useState({});
+    const [myIdeas, setMyIdeas] = useState([]);
 
-  const RequestsList = () => {
-     const displayRequests = role === 'admin' ? requests : requests.filter(r => r.requesterId === user?.uid);
+    useEffect(() => {
+        const unsubT = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'templates'), (snap) => {
+            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setTemplates(data);
+            if(data.length > 0) setSelectedTemplate(data[0]);
+        });
+        const unsubI = onSnapshot(query(collection(db, 'artifacts', appId, 'public', 'data', 'ideas'), where('uid', '==', userData.id)), (snap) => setMyIdeas(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        return () => { unsubT(); unsubI(); };
+    }, [userData]);
+
+    const handleFileChange = (label, e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setFormData(prev => ({ ...prev, [`${label} (Attachment)`]: reader.result }));
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const submitIdea = async (e) => {
+        e.preventDefault();
+        const cleanData = {};
+        Object.keys(formData).forEach(key => { if (formData[key]) cleanData[key] = formData[key]; });
+        
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'ideas'), {
+            uid: userData.id,
+            submittedBy: userData.email,
+            department: userData.dept,
+            category: selectedTemplate.category,
+            data: cleanData,
+            status: 'pending',
+            createdAt: serverTimestamp()
+        });
+        setFormData({});
+        setActiveTab('my-ideas');
+    };
+
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl md:text-2xl font-bold text-slate-800">{role === 'admin' ? 'All Requests' : 'My Requests'}</h2>
-          <button onClick={() => setShowRequestModal(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 text-sm md:text-base md:px-4 rounded-lg flex items-center space-x-2 transition"><Plus className="w-4 h-4" /> <span className="hidden md:inline">New Request</span><span className="md:hidden">New</span></button>
-        </div>
-        <div className="grid gap-4">
-          {displayRequests.map(req => {
-            const assignedVehicle = vehicles.find(v => v.id === req.assignedVehicleId);
-            return (
-              <Card key={req.id} className="p-4 md:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="flex-1 w-full">
-                   <div className="flex items-center space-x-3 mb-2 flex-wrap gap-y-2">
-                    <Badge type={req.type === 'overtime' ? 'blue' : 'tier1'}>{req.type?.toUpperCase()}</Badge>
-                    <span className="text-xs text-slate-400">ID: {req.id.slice(0,6).toUpperCase()}</span>
-                    {role === 'admin' && <span className="text-xs font-medium text-slate-600 flex items-center"><UserCircle className="w-3 h-3 mr-1" /> {req.requesterName}</span>}
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-slate-600">
-                    <div className="flex items-center"><MapPin className="w-4 h-4 mr-2 text-slate-400 shrink-0" /> <span className="truncate">{req.pickup} ({AREAS.find(a=>a.id===req.area)?.name}) → {req.destination}</span></div>
-                    <div className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-slate-400 shrink-0" /> {req.date} @ {req.time}</div>
-                  </div>
-                </div>
-                <div className="flex flex-row md:flex-col items-center md:items-end justify-between w-full md:w-auto gap-2 md:gap-1 min-w-[150px]">
-                   {req.status === 'pending' && <Badge type="warning">Pending</Badge>}
-                   {req.status === 'approved' && assignedVehicle && (
-                     <div className="text-right">
-                       <Badge type="success">Approved</Badge>
-                       <div className="text-xs text-slate-500 mt-1 hidden md:block">Car: <strong>{assignedVehicle.plate}</strong></div>
-                       <div className="text-xs text-blue-600 flex items-center justify-end gap-1 mt-0.5"><Phone className="w-3 h-3"/> {assignedVehicle.driverPhone}</div>
-                     </div>
-                   )}
-                   {req.status === 'completed' && <Badge type="neutral">Completed</Badge>}
-                   {role === 'admin' && req.status === 'pending' && (<button onClick={() => { setSelectedRequest(req); setAssignmentMode('single'); }} className="mt-2 text-sm bg-blue-600 text-white px-3 py-2 md:py-1.5 rounded hover:bg-blue-700 transition w-full md:w-auto">Assign Single</button>)}
-                   {role === 'admin' && req.status === 'approved' && (<button onClick={() => handleCompleteTrip(req)} className="mt-2 text-sm border border-slate-300 text-slate-600 px-3 py-2 md:py-1.5 rounded hover:bg-slate-50 transition w-full md:w-auto">Mark Complete</button>)}
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-  
-  const AddVehicleModal = () => (
-    <div className={`fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 ${!showAddVehicleModal && 'hidden'}`}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-slate-100 flex justify-between items-center"><h3 className="text-xl font-bold text-slate-800">Add New Vehicle</h3><button onClick={() => setShowAddVehicleModal(false)}><X className="w-5 h-5 text-slate-400" /></button></div>
-        <form onSubmit={handleAddVehicle} className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-slate-700 mb-1">Plate Number</label><input name="plate" required className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700" /></div><div><label className="block text-sm font-medium text-slate-700 mb-1">Model</label><input name="model" required className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700" /></div></div>
-          <div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-slate-700 mb-1">Type</label><select name="type" className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700"><option value="sedan">Sedan</option><option value="bus">Bus</option></select></div><div><label className="block text-sm font-medium text-slate-700 mb-1">Capacity</label><input type="number" name="capacity" defaultValue="4" className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700" /></div></div>
-          <div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-slate-700 mb-1">Driver Name</label><input name="driverName" className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700" /></div><div><label className="block text-sm font-medium text-slate-700 mb-1">Driver Phone</label><input name="driverPhone" className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700" /></div></div>
-          <div><label className="block text-sm font-medium text-slate-700 mb-1">Tier</label><select name="tier" className="w-full rounded-lg border-slate-300 border p-2.5 text-slate-700"><option value="1">Tier 1</option><option value="2">Tier 2</option><option value="3">Tier 3</option></select></div>
-          <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 font-medium transition">Add to Fleet</button>
-        </form>
-      </div>
-    </div>
-  );
+      <div className="p-6 max-w-6xl mx-auto">
+        <header className="flex justify-between items-center mb-8">
+          <div><h1 className="text-2xl font-bold text-slate-900">Employee Portal</h1><p className="text-slate-500">{userData.email} • {userData.dept}</p></div>
+          <Button variant="outline" onClick={() => signOut(auth)}><LogOut className="w-4 h-4" /> Logout</Button>
+        </header>
 
-  const AssignmentModal = () => {
-    if (!selectedRequest) return null;
-    const totalPax = assignmentMode === 'group' ? selectedRequest.totalPassengers : selectedRequest.passengers;
-    const reqType = assignmentMode === 'group' ? selectedRequest.type : selectedRequest.type;
-    let recommended = vehicles.filter(v => v.status === 'available' && v.capacity >= totalPax);
-    if (reqType === 'custom' || reqType === 'overtime') { recommended.sort((a, b) => a.tier - b.tier); } else { recommended.sort((a, b) => b.tier - a.tier); }
-    return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-          <div className="p-6 border-b border-slate-100"><h3 className="text-xl font-bold text-slate-800">Assign Vehicle to {assignmentMode === 'group' ? 'Trip Group' : 'Request'}</h3><div className="mt-2 bg-blue-50 p-3 rounded-lg text-sm text-blue-800"><span className="font-bold">Total Passengers:</span> {totalPax}<span className="mx-2">•</span><span className="font-bold">Destination:</span> {selectedRequest.destination}</div></div>
-          <div className="p-6 overflow-y-auto flex-1"><div className="grid gap-3">{recommended.length > 0 ? recommended.map(v => (<button key={v.id} onClick={() => handleAssignVehicle(v.id)} className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition group text-left"><div className="flex items-center space-x-4"><div className={`p-2 rounded-lg ${v.type === 'bus' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>{v.type === 'bus' ? <Bus className="w-5 h-5"/> : <Car className="w-5 h-5"/>}</div><div><div className="font-bold text-slate-800">{v.plate} <span className="text-slate-400 font-normal">| {v.model}</span></div><div className="text-xs text-slate-500 mt-0.5 flex items-center"><UserCircle className="w-3 h-3 mr-1"/> {v.driverName} • <Phone className="w-3 h-3 mx-1"/> {v.driverPhone}</div></div></div><div className="text-right"><Badge type={`tier${v.tier}`}>Tier {v.tier}</Badge><div className="text-xs text-slate-500 mt-1">{v.capacity} Seats</div></div></button>)) : (<div className="text-center py-8 text-slate-500 bg-slate-50 rounded-lg">No suitable available vehicles found for {totalPax} passengers.</div>)}</div></div>
-          <div className="p-4 border-t border-slate-100 flex justify-end"><button onClick={() => setSelectedRequest(null)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button></div>
+        <div className="flex gap-4 mb-6">
+            <Button variant={activeTab === 'submit' ? 'primary' : 'outline'} onClick={() => setActiveTab('submit')}><Plus className="w-4 h-4" /> New Idea</Button>
+            <Button variant={activeTab === 'my-ideas' ? 'primary' : 'outline'} onClick={() => setActiveTab('my-ideas')}><Lightbulb className="w-4 h-4" /> My Ideas</Button>
         </div>
+
+        {activeTab === 'submit' && (
+            <div className="max-w-2xl mx-auto">
+                <Card className="p-8">
+                    <h2 className="text-xl font-bold text-slate-800 mb-6">Submit Idea</h2>
+                    <div className="mb-6 flex gap-2 flex-wrap">
+                        {templates.map(t => (
+                            <button key={t.id} onClick={() => { setSelectedTemplate(t); setFormData({}); }} className={`px-4 py-2 rounded-full border text-sm font-medium transition ${selectedTemplate?.id === t.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 hover:border-indigo-400'}`}>{t.category}</button>
+                        ))}
+                    </div>
+                    {selectedTemplate && (
+                        <form onSubmit={submitIdea} className="space-y-4">
+                            {selectedTemplate.fields.map((field, idx) => (
+                                <div key={idx}>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">{field.label} {field.required && <span className="text-rose-500">*</span>}</label>
+                                    {field.type === 'textarea' ? (
+                                        <textarea required={field.required} className="w-full p-3 border rounded-lg" rows="3" value={formData[field.label] || ''} onChange={e => setFormData({...formData, [field.label]: e.target.value})} />
+                                    ) : field.type === 'select' ? (
+                                        <select required={field.required} className="w-full p-3 border rounded-lg" value={formData[field.label] || ''} onChange={e => setFormData({...formData, [field.label]: e.target.value})}>
+                                            <option value="">Select...</option>
+                                            {field.options?.split(',').map(opt => <option key={opt} value={opt.trim()}>{opt.trim()}</option>)}
+                                        </select>
+                                    ) : field.type === 'file' ? (
+                                        <input type="file" required={field.required} className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" onChange={e => handleFileChange(field.label, e)} />
+                                    ) : (
+                                        <input type={field.type} required={field.required} className="w-full p-3 border rounded-lg" value={formData[field.label] || ''} onChange={e => setFormData({...formData, [field.label]: e.target.value})} />
+                                    )}
+                                </div>
+                            ))}
+                            <Button type="submit" className="w-full mt-4">Submit for Review</Button>
+                        </form>
+                    )}
+                </Card>
+            </div>
+        )}
+
+        {activeTab === 'my-ideas' && (
+            <div className="space-y-4">
+                {myIdeas.map(idea => (
+                    <Card key={idea.id} className="p-4 flex items-center justify-between">
+                        <div><div className="font-bold text-lg">{idea.data['Idea Title']}</div><div className="text-sm text-slate-500">{idea.category} • {new Date(idea.createdAt?.seconds * 1000).toLocaleDateString()}</div></div>
+                        <Badge status={idea.status} />
+                    </Card>
+                ))}
+            </div>
+        )}
       </div>
     );
   };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-500">Loading Idea Bank...</div>;
 
   return (
-    <div className="flex min-h-screen bg-slate-50 font-sans">
-      <Sidebar />
-      <main className="flex-1 lg:ml-64 p-4 lg:p-8 transition-all duration-300">
-        <div className="lg:hidden flex items-center justify-between bg-white p-4 rounded-xl shadow-sm mb-6 border border-slate-100"><div className="flex items-center space-x-2"><Truck className="w-6 h-6 text-blue-500" /><span className="text-lg font-bold text-slate-900">FleetMaster</span></div><button onClick={() => setIsSidebarOpen(true)} className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg"><Menu className="w-6 h-6" /></button></div>
-        <div className="max-w-6xl mx-auto">
-          {activeTab === 'dashboard' && role === 'admin' && (<div className="grid grid-cols-1 lg:grid-cols-2 gap-6"><div className="lg:col-span-2 hidden lg:block"><header className="mb-4"><h1 className="text-3xl font-bold text-slate-900">Dashboard</h1></header></div><SmartDispatchView /><RequestsList /></div>)}
-          {activeTab === 'dashboard' && role !== 'admin' && (<><header className="mb-8 hidden lg:block"><h1 className="text-3xl font-bold text-slate-900">Dashboard</h1></header><RequestsList /></>)}
-          {activeTab === 'smart-dispatch' && role === 'admin' && <SmartDispatchView />}
-          {activeTab === 'fleet' && role === 'admin' && <VehicleList />}
-          {activeTab === 'requests' && <RequestsList />}
-        </div>
-      </main>
-      <RequestModal />
-      <AddVehicleModal />
-      <AssignmentModal />
+    <div className="min-h-screen bg-slate-50 font-sans">
+      {view === 'login' && <Login />}
+      {view === 'admin' && <AdminPortal />}
+      {view === 'manager' && <ManagerPortal />}
+      {view === 'employee' && <EmployeePortal />}
     </div>
   );
 }
