@@ -14,12 +14,20 @@ import {
 } from 'firebase/firestore';
 
 // --- Firebase Config ---
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'idea-bank-v2';
+// PASTE THIS INSTEAD
+const firebaseConfig = {
+  apiKey: "AIzaSyAMOU-IK6UfKk75UR0P_Rs80z0uEsssQ9o", // Use your specific keys
+  authDomain: "epromdeploy.firebaseapp.com",
+  projectId: "epromdeploy",
+  storageBucket: "epromdeploy.firebasestorage.app",
+  messagingSenderId: "179394609832",
+  appId: "1:179394609832:web:cf8d21ea2eef70990cb89d",
+  measurementId: "G-X5GVRLDBQQ"
+};
 
+const app = initializeApp(firebaseConfig);
+// ... existing auth/db init ...
+const appId = 'idea-bank-v2'; // Hardcode the App ID
 // --- Utility Components ---
 const Card = ({ children, className = "" }) => (
   <div className={`bg-white rounded-xl shadow-sm border border-slate-200 ${className}`}>
