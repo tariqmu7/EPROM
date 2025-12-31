@@ -465,4 +465,3 @@ export default App;
       {view === 'employee' && <EmployeePortal />}
     </div>
   );
-}
