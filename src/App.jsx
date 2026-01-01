@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore, collection, addDoc, query, where, 
-  onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDocs 
+  onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDocs, initializeFirestore,
 } from 'firebase/firestore';
 import { 
   getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
@@ -27,7 +27,11 @@ const firebaseConfig = {
 // Initialize Firebase (This fixes the "auth is not defined" error)
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app); 
-const db = getFirestore(app);
+// FIX: Use initializeFirestore with forced Long Polling to avoid QUIC errors
+const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+});
+
 
 // This appId is used for the database collection path logic in the code
 const appId = "eprom-production-v1"; 
