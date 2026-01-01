@@ -27,7 +27,7 @@ jobs:
           rm -f package-lock.json
           npm install
           npm install firebase lucide-react
-          npm install -D tailwindcss postcss autoprefixer
+          npm install -D tailwindcss@3 postcss autoprefixer
 
       - name: Build
         env:
