@@ -24,8 +24,14 @@ const firebaseConfig = {
   measurementId: "G-X5GVRLDBQQ"
 };
 
+// Initialize Firebase (This fixes the "auth is not defined" error)
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app); 
+const db = getFirestore(app);
+
 // This appId is used for the database collection path logic in the code
 const appId = "eprom-production-v1"; 
+
 // --- Constants & Utilities ---
 const COLLECTIONS = {
   USERS: 'users',
