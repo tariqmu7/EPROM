@@ -24,7 +24,7 @@ const firebaseConfig = {
   measurementId: "G-X5GVRLDBQQ"
 };
 
-// This appId is used for the database collection path logic in the code
+// This appId is used for the database collecton path logic in the code
 const appId = "eprom-production-v1"; 
 
 // --- Constants & Utilities ---
