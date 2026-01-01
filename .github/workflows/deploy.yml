@@ -24,10 +24,14 @@ jobs:
       - name: Clean & Install Dependencies
         run: |
           rm -rf node_modules
+          rm -f package-lock.json
           npm install
+          npm install -D tailwindcss postcss autoprefixer
 
       - name: Build
-        run: npx vite build
+        env:
+          CI: false
+        run: npm run build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
