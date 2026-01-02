@@ -8,7 +8,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
 } from 'firebase/auth';
 import { 
-  Lightbulb, Users, FileText, CheckCircle, XCircle, 
+  Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
   UserPlus, Layout, Filter, ChevronDown, ChevronUp, Send
 } from 'lucide-react';
@@ -217,7 +217,7 @@ export default function IdeaBankApp() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center justify-between h-16">
                 <div className="flex items-center gap-2">
-                  <Lightbulb className="w-6 h-6 text-yellow-300" />
+                  <img src="/logo.jpg" alt="Idea Bank" className="w-8 h-8 rounded-full object-cover border border-indigo-400 bg-white" />
                   <span className="font-bold text-xl">Idea Bank</span>
                   <span className="ml-2 px-2 py-0.5 rounded text-xs bg-indigo-800 text-indigo-200 uppercase">
                     {currentUser.role}
@@ -256,9 +256,8 @@ const LoginPage = ({ onLogin, onGoRegister }) => {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-br from-indigo-50 to-blue-100">
       <div className="mb-8 flex flex-col items-center text-center">
-        <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg mb-4">
-          <Lightbulb className="w-10 h-10 text-white" />
-        </div>
+        {/* LOGO IMPLEMENTATION */}
+        <img src="/logo.jpg" alt="Idea Bank Logo" className="w-24 h-24 rounded-2xl shadow-lg mb-6 object-cover border-4 border-white" />
         <h1 className="text-4xl font-extrabold text-gray-900">Idea Bank</h1>
         <p className="text-gray-600 mt-2">Innovate. Collaborate. Execute.</p>
       </div>
