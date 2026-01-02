@@ -11,7 +11,7 @@ import {
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
   UserPlus, Layout, Filter, ChevronDown, ChevronUp, Send, 
-  BarChart3, Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer
+  BarChart3, Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, FileDown
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -68,6 +68,100 @@ const DEFAULT_ADMIN = {
   role: ROLES.ADMIN,
   name: 'System Admin',
   status: STATUS.APPROVED
+};
+
+// --- Helper Functions ---
+
+// Convert Google Drive View Link to Direct Image Link for <img> tags
+const getDirectLink = (url) => {
+  if (!url) return '';
+  // Check if it's a Google Drive link
+  if (url.includes('drive.google.com') && url.includes('/d/')) {
+    const id = url.match(/\/d\/(.*?)\//)?.[1] || url.match(/\/d\/(.*?)($|\?)/)?.[1];
+    if (id) {
+      // Use lh3.googleusercontent.com for better CORS support with images
+      return `https://lh3.googleusercontent.com/d/${id}`;
+    }
+  }
+  return url;
+};
+
+// Helper to generate PDF using html2pdf.js (Loaded via CDN)
+const generatePDF = (idea) => {
+  if (!window.html2pdf) {
+    alert("PDF Generator is loading... please try again in 5 seconds.");
+    return;
+  }
+
+  const element = document.createElement('div');
+  element.innerHTML = `
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto;">
+      <div style="border-bottom: 2px solid #1e293b; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <h1 style="font-size: 28px; font-weight: bold; margin: 0; color: #1e293b; text-transform: uppercase;">Idea Bank Report</h1>
+          <p style="margin: 5px 0 0; color: #64748b; font-size: 12px;">CONFIDENTIAL INTERNAL DOCUMENT</p>
+        </div>
+        <div style="text-align: right;">
+          <p style="margin: 0; font-size: 12px; color: #64748b;">Ref: #${idea.id.slice(0, 8)}</p>
+          <p style="margin: 0; font-size: 12px; color: #64748b;">Date: ${new Date().toLocaleDateString()}</p>
+        </div>
+      </div>
+
+      <div style="background-color: #f8fafc; padding: 20px; border-radius: 4px; margin-bottom: 30px;">
+        <h2 style="font-size: 24px; font-weight: bold; color: #0f172a; margin-top: 0;">${idea.formTitle}</h2>
+        <div style="display: flex; gap: 20px; margin-top: 10px; font-size: 14px;">
+          <p><strong>Submitted By:</strong> ${idea.employeeName}</p>
+          <p><strong>Department:</strong> ${idea.mainDepartment}</p>
+          <p><strong>Date:</strong> ${new Date(idea.submittedAt).toLocaleDateString()}</p>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 30px;">
+        ${Object.entries(idea.formData).map(([k, v]) => {
+          const isImg = v.toString().includes('drive.google.com') || v.toString().match(/\.(jpeg|jpg|gif|png)$/);
+          return `
+            <div style="margin-bottom: 25px; page-break-inside: avoid;">
+              <h3 style="font-size: 14px; font-weight: bold; color: #475569; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">${k}</h3>
+              ${isImg ? 
+                `<img src="${getDirectLink(v)}" style="max-width: 100%; max-height: 400px; border-radius: 4px; border: 1px solid #e2e8f0; display: block; margin: 10px 0;" crossorigin="anonymous" />` 
+                : 
+                `<div style="font-size: 16px; line-height: 1.6; color: #334155; white-space: pre-wrap;">${v}</div>`
+              }
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+        <h3 style="font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 15px;">Executive Feedback & Approval Status</h3>
+        <div style="margin-bottom: 20px;">
+           <span style="background-color: ${idea.status === 'approved' ? '#dcfce7' : '#f1f5f9'}; color: ${idea.status === 'approved' ? '#166534' : '#475569'}; padding: 5px 10px; border-radius: 4px; font-weight: bold; text-transform: uppercase; font-size: 12px;">
+             Current Status: ${idea.status}
+           </span>
+        </div>
+        ${idea.comments && idea.comments.length > 0 ? idea.comments.map(c => `
+          <div style="background-color: #fff; padding: 10px; border-left: 3px solid #cbd5e1; margin-bottom: 10px; font-size: 13px;">
+            <p style="margin: 0 0 5px;"><strong>${c.author}</strong> <span style="color: #94a3b8;">${new Date(c.date).toLocaleDateString()}</span></p>
+            <p style="margin: 0; color: #334155;">${c.text}</p>
+          </div>
+        `).join('') : '<p style="font-size: 13px; color: #94a3b8;">No comments recorded.</p>'}
+      </div>
+
+      <div style="margin-top: 50px; text-align: center; font-size: 10px; color: #cbd5e1;">
+        Generated by Idea Bank • EPROM Enterprise Solutions
+      </div>
+    </div>
+  `;
+
+  const opt = {
+    margin: 0.5,
+    filename: `Report-${idea.formTitle.replace(/\s+/g, '-')}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true },
+    jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+  };
+
+  window.html2pdf().set(opt).from(element).save();
 };
 
 // --- Helper Components (Primitives) ---
@@ -164,9 +258,12 @@ const IdeaCard = React.memo(({ idea, isManager, canApprove, onStatus, onComment,
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [tempCommentText, setTempCommentText] = useState('');
 
-  // Helper to detect if a string is a URL
+  // Smart URL/Image Detection
   const isUrl = (str) => {
     try { return Boolean(new URL(str)); } catch(e){ return false; }
+  };
+  const isImageLink = (url) => {
+    return (url.includes('drive.google.com') && !url.includes('view?usp=drivesdk')) || url.match(/\.(jpeg|jpg|gif|png)$/) != null || url.includes('googleusercontent');
   };
 
   const copyShareLink = (e) => {
@@ -269,11 +366,16 @@ const IdeaCard = React.memo(({ idea, isManager, canApprove, onStatus, onComment,
     </Card>
 
     <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={idea.formTitle}>
-        <div className="mb-6 flex items-center gap-4 border-b border-slate-100 pb-4">
-           <Badge status={idea.status} />
-           <div className="text-sm text-slate-500">
-              Submitted by <span className="font-bold text-slate-900">{idea.employeeName}</span> on {new Date(idea.submittedAt).toLocaleDateString()}
+        <div className="mb-6 flex justify-between items-center border-b border-slate-100 pb-4">
+           <div className="flex items-center gap-4">
+             <Badge status={idea.status} />
+             <div className="text-sm text-slate-500">
+                Submitted by <span className="font-bold text-slate-900">{idea.employeeName}</span> on {new Date(idea.submittedAt).toLocaleDateString()}
+             </div>
            </div>
+           <Button variant="secondary" onClick={() => generatePDF(idea)} className="px-3 py-1.5 text-xs h-8">
+             <FileDown className="w-4 h-4 mr-1" /> Download Report
+           </Button>
         </div>
 
         <div className="grid grid-cols-1 gap-6 py-2">
@@ -281,11 +383,19 @@ const IdeaCard = React.memo(({ idea, isManager, canApprove, onStatus, onComment,
               <div key={k} className="group">
                 <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 group-hover:text-slate-600 transition-colors">{k}</span>
                 {isUrl(v) ? (
-                   <a href={v} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-blue-600 hover:underline font-medium bg-blue-50 px-3 py-2 rounded-sm border border-blue-100">
-                      <Paperclip className="w-4 h-4" /> View Attachment / Download
-                   </a>
+                   // If it looks like an image link, try to render it
+                   isImageLink(getDirectLink(v)) ? (
+                     <div className="mt-2 border rounded p-2 bg-slate-50">
+                       <img src={getDirectLink(v)} alt={k} className="max-w-full h-auto rounded shadow-sm max-h-96" />
+                       <a href={v} target="_blank" rel="noreferrer" className="block text-xs text-blue-500 mt-2 hover:underline text-center">View Full Resolution</a>
+                     </div>
+                   ) : (
+                     <a href={v} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-blue-600 hover:underline font-medium bg-blue-50 px-3 py-2 rounded-sm border border-blue-100">
+                        <Paperclip className="w-4 h-4" /> View Attachment / Download
+                     </a>
+                   )
                 ) : (
-                   <p className="text-sm text-slate-800 leading-relaxed bg-slate-50 p-3 rounded-sm border border-slate-100">{v}</p>
+                   <p className="text-sm text-slate-800 leading-relaxed bg-slate-50 p-3 rounded-sm border border-slate-100 whitespace-pre-wrap">{v}</p>
                 )}
               </div>
             ))}
@@ -639,7 +749,7 @@ const FormBuilder = ({ forms, showToast }) => {
             <option value="number">Numeric</option>
             <option value="date">Date Picker</option>
             <option value="file">File Attachment</option>
-            <option value="image">Image Upload</option> {/* Added Image Type */}
+            <option value="image">Image Upload</option>
           </select>
           <Button onClick={() => { if(field.label) { setNewForm(prev => ({...prev, fields: [...prev.fields, field]})); setField({label:'', type:'text'}); }}} variant="secondary">Add</Button>
         </div>
@@ -1020,6 +1130,83 @@ const EmployeePortal = ({ currentUser, showToast }) => {
   );
 };
 
+const ManagerPortal = ({ currentUser, showToast }) => {
+  const [ideas, setIdeas] = useState([]);
+  const [filter, setFilter] = useState('all');
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), s => {
+      setIdeas(s.docs.map(d => ({id:d.id, ...d.data()})));
+    });
+    return () => unsub();
+  }, []);
+
+  const handleStatus = useCallback(async (id, status) => {
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
+      status, reviewedBy: currentUser.name, reviewedAt: new Date().toISOString()
+    });
+    showToast(`Proposal status updated: ${status}`);
+  }, [currentUser, showToast]);
+
+  const handleComment = useCallback(async (id, text) => {
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
+      comments: arrayUnion({ 
+        id: Date.now(), 
+        author: currentUser.name, 
+        text, 
+        date: new Date().toISOString() 
+      })
+    });
+    showToast("Feedback recorded");
+  }, [currentUser, showToast]);
+
+  const handleUpdateComment = useCallback(async (ideaId, updatedComments) => {
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, ideaId), {
+      comments: updatedComments
+    });
+    showToast("Comment updated");
+  }, [showToast]);
+
+  const myDeptIdeas = useMemo(() => ideas.filter(i => i.mainDepartment === currentUser.department), [ideas, currentUser]);
+  const otherIdeas = useMemo(() => ideas.filter(i => i.mainDepartment !== currentUser.department), [ideas, currentUser]);
+  const displayedIdeas = useMemo(() => filter === 'myDept' ? myDeptIdeas : [...myDeptIdeas, ...otherIdeas], [filter, myDeptIdeas, otherIdeas]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Executive Overview</h2>
+          <p className="text-slate-500">Review and approve operational proposals.</p>
+        </div>
+        <div className="flex bg-white rounded-sm shadow-sm border border-slate-200 p-1">
+          <button onClick={() => setFilter('all')} className={`px-6 py-2 text-sm rounded-sm font-semibold transition-all ${filter === 'all' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-900'}`}>Global View</button>
+          <button onClick={() => setFilter('myDept')} className={`px-6 py-2 text-sm rounded-sm font-semibold transition-all ${filter === 'myDept' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-900'}`}>My Department</button>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {displayedIdeas.map(idea => (
+          <IdeaCard 
+            key={idea.id} 
+            idea={idea} 
+            isManager={true} 
+            canApprove={idea.mainDepartment === currentUser.department} 
+            onStatus={handleStatus} 
+            onComment={handleComment} 
+            onUpdateComment={handleUpdateComment}
+            currentUser={currentUser}
+          />
+        ))}
+        {displayedIdeas.length === 0 && (
+          <div className="p-12 text-center border-2 border-dashed border-slate-300 rounded-sm">
+             <div className="text-slate-400 font-medium">No pending proposals found in this view.</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const GuestAuth = ({ onAccess }) => {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState('init'); // init, pending, approved
@@ -1095,8 +1282,8 @@ const GuestView = ({ ideaId }) => {
     return url.match(/\.(jpeg|jpg|gif|png)$/) != null || url.includes('drive.google.com') === false; // Crude check, assuming Script returns direct links mostly
   };
 
-  const printReport = () => {
-    window.print();
+  const handlePrint = () => {
+    generatePDF(idea);
   };
 
   if (loading) return <LoadingScreen message="Loading Report..." />;
@@ -1128,7 +1315,7 @@ const GuestView = ({ ideaId }) => {
               {v.startsWith('http') ? (
                  // Check if image or file link
                  isImage(v) || v.includes('googleusercontent') ? (
-                    <img src={v} alt="Attachment" className="w-full rounded-lg shadow-md border border-slate-100 print:shadow-none" />
+                    <img src={getDirectLink(v)} alt="Attachment" className="w-full rounded-lg shadow-md border border-slate-100 print:shadow-none" crossorigin="anonymous" />
                  ) : (
                     <a href={v} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-blue-600 hover:underline bg-blue-50 px-4 py-3 rounded-md border border-blue-100 print:hidden">
                        <Paperclip className="w-5 h-5" /> View Attached Document
@@ -1147,8 +1334,8 @@ const GuestView = ({ ideaId }) => {
 
         {/* Floating Print Button for Guest */}
         <div className="fixed bottom-8 right-8 print:hidden">
-          <Button onClick={printReport} className="shadow-xl rounded-full w-14 h-14 flex items-center justify-center p-0">
-            <Printer className="w-6 h-6" />
+          <Button onClick={handlePrint} className="shadow-xl rounded-full w-14 h-14 flex items-center justify-center p-0">
+            <FileDown className="w-6 h-6" />
           </Button>
         </div>
       </div>
@@ -1256,6 +1443,12 @@ export default function IdeaBankApp() {
   const [sharedIdeaId, setSharedIdeaId] = useState(null);
 
   useEffect(() => {
+    // Inject PDF Library
+    const script = document.createElement('script');
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    script.async = true;
+    document.body.appendChild(script);
+
     const restoreSession = async () => {
       // Check for shared link in URL
       const params = new URLSearchParams(window.location.search);
