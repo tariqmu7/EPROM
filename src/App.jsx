@@ -11,11 +11,12 @@ import {
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
   UserPlus, Layout, Filter, ChevronDown, ChevronUp, Send, 
-  BarChart3, Settings, Search, Menu, ImageOff
+  BarChart3, Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck
 } from 'lucide-react';
 
-// --- Firebase Configuration ---
-// Your Personal Firebase Config
+// --- Configuration ---
+
+// 1. Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyAMOU-IK6UfKk75UR0P_Rs80z0uEsssQ9o",
   authDomain: "epromdeploy.firebaseapp.com",
@@ -25,6 +26,9 @@ const firebaseConfig = {
   appId: "1:179394609832:web:cf8d21ea2eef70990cb89d",
   measurementId: "G-X5GVRLDBQQ"
 };
+
+// 2. Google Apps Script Web App URL (PASTE YOUR DEPLOYED SCRIPT URL HERE)
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbywVx70i2DXMf90cuMkE84Jn3rNlIr6dQJwXdoVx7l9kzzSXU-9uxn1MnrbWnJRRu6b/exec"; 
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -65,10 +69,9 @@ const DEFAULT_ADMIN = {
   status: STATUS.APPROVED
 };
 
-// --- Helper Components (Redesigned) ---
+// --- Helper Components ---
 
 const Button = ({ children, onClick, variant = 'primary', className = '', type = 'button', disabled = false }) => {
-  // Industrial, flat design style
   const baseStyle = "px-5 py-2.5 text-sm font-semibold tracking-wide transition-colors duration-200 flex items-center justify-center gap-2 rounded-sm focus:outline-none focus:ring-2 focus:ring-offset-2";
   
   const variants = {
@@ -102,8 +105,8 @@ const Input = ({ label, type = "text", value, onChange, placeholder, required = 
   </div>
 );
 
-const Card = ({ children, className = '' }) => (
-  <div className={`bg-white border border-slate-200 shadow-sm rounded-sm ${className}`}>
+const Card = ({ children, className = '', onClick }) => (
+  <div onClick={onClick} className={`bg-white border border-slate-200 shadow-sm rounded-sm ${className} ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}>
     {children}
   </div>
 );
@@ -121,6 +124,26 @@ const Badge = ({ status }) => {
     <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border rounded-sm ${styles[status] || "bg-gray-100"}`}>
       {status}
     </span>
+  );
+};
+
+// Modal Component
+const Modal = ({ isOpen, onClose, title, children }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in">
+      <div className="bg-white rounded-sm shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col animate-scale-up">
+        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50">
+          <h3 className="text-xl font-bold text-slate-900">{title}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 transition-colors">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+        <div className="p-8 overflow-y-auto">
+          {children}
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -287,7 +310,6 @@ const LoginPage = ({ onLogin, onGoRegister }) => {
       <div className="hidden lg:flex w-1/2 bg-slate-900 relative flex-col justify-between p-12 text-white">
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1516937941348-c09645f3a2eb?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-10 mix-blend-overlay"></div>
         <div className="relative z-10">
-          {/* Logo with Fallback and Larger Size */}
           {!imgError ? (
             <img 
               src="./logo.jpg" 
@@ -453,6 +475,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
   const [submission, setSubmission] = useState({});
   const [targetDept, setTargetDept] = useState('');
   const [subDepts, setSubDepts] = useState([]);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     const unsub1 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.DEPARTMENTS), s => setDepartments(s.docs.map(d => ({id:d.id, ...d.data()}))));
@@ -461,6 +484,46 @@ const EmployeePortal = ({ currentUser, showToast }) => {
     const unsub3 = onSnapshot(q, s => setMyIdeas(s.docs.map(d => ({id:d.id, ...d.data()}))));
     return () => { unsub1(); unsub2(); unsub3(); };
   }, [currentUser]);
+
+  const handleFileUpload = async (file, label) => {
+    if (!file) return;
+    setUploading(true);
+    
+    // Google Apps Script Upload Strategy
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      // Clean Base64 string
+      const base64 = reader.result.split(',')[1];
+      const payload = {
+        filename: file.name,
+        mimeType: file.type,
+        bytes: base64
+      };
+
+      try {
+        // Send to Google Script
+        const response = await fetch(GOOGLE_SCRIPT_URL, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+           setSubmission(prev => ({ ...prev, [label]: data.url }));
+           showToast("File uploaded to Corporate Drive securely.", "success");
+        } else {
+           throw new Error(data.message || "Script Error");
+        }
+      } catch (error) {
+        console.error("Upload Error:", error);
+        showToast("Upload failed. Ensure Script URL is correct.", "error");
+      } finally {
+        setUploading(false);
+      }
+    };
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -488,37 +551,32 @@ const EmployeePortal = ({ currentUser, showToast }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <div className="lg:col-span-2">
-        {!activeForm ? (
-           <>
-             <div className="mb-6">
-                <h2 className="text-xl font-bold text-slate-900">Submit New Proposal</h2>
-                <p className="text-slate-500">Select a category to begin your submission.</p>
-             </div>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               {forms.map(form => (
-                 <button key={form.id} onClick={() => setActiveForm(form)} className="flex items-start p-6 bg-white border border-slate-200 rounded-sm hover:border-slate-400 hover:shadow-md transition-all text-left group">
-                   <div className="mr-4 bg-slate-100 p-3 rounded-sm group-hover:bg-slate-200">
-                     <FileText className="w-6 h-6 text-slate-700" />
-                   </div>
-                   <div>
-                     <div className="font-bold text-lg text-slate-800 group-hover:text-slate-900">{form.title}</div>
-                     <div className="text-sm text-slate-500 mt-1 uppercase tracking-wide text-[10px]">{form.category}</div>
-                   </div>
-                 </button>
-               ))}
-             </div>
-           </>
-        ) : (
-          <Card className="p-8">
-            <div className="flex justify-between items-center mb-8 border-b border-slate-100 pb-6">
-              <div>
-                <h3 className="text-2xl font-bold text-slate-900">{activeForm.title}</h3>
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">New Submission</span>
+        
+        <div className="mb-6">
+           <h2 className="text-xl font-bold text-slate-900">Submit New Proposal</h2>
+           <p className="text-slate-500">Select a category to begin your submission.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {forms.map(form => (
+            <button key={form.id} onClick={() => setActiveForm(form)} className="flex items-start p-6 bg-white border border-slate-200 rounded-sm hover:border-slate-400 hover:shadow-md transition-all text-left group">
+              <div className="mr-4 bg-slate-100 p-3 rounded-sm group-hover:bg-slate-200">
+                <FileText className="w-6 h-6 text-slate-700" />
               </div>
-              <Button variant="ghost" onClick={() => setActiveForm(null)}>Cancel</Button>
-            </div>
+              <div>
+                <div className="font-bold text-lg text-slate-800 group-hover:text-slate-900">{form.title}</div>
+                <div className="text-sm text-slate-500 mt-1 uppercase tracking-wide text-[10px]">{form.category}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {/* Modal for Form Submission */}
+        <Modal isOpen={!!activeForm} onClose={() => setActiveForm(null)} title={activeForm?.title || "New Submission"}>
             <form onSubmit={handleSubmit} className="space-y-6">
-              {activeForm.fields.map((f, i) => (
+              <div className="mb-6 pb-4 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Category: {activeForm?.category}</span>
+              </div>
+              {activeForm?.fields.map((f, i) => (
                 <div key={i}>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
                     {f.label} {f.required && <span className="text-red-500">*</span>}
@@ -529,6 +587,29 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                       required={f.required} 
                       onChange={e => setSubmission({...submission, [f.label]: e.target.value})} 
                     />
+                  ) : f.type === 'file' ? (
+                     <div className="bg-slate-50 border border-slate-200 p-4 rounded-sm">
+                        <div className="flex items-center gap-4">
+                           <label className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-sm cursor-pointer hover:bg-slate-700 transition-colors">
+                              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                              <span>{uploading ? "Uploading to Drive..." : "Select File"}</span>
+                              <input 
+                                type="file" 
+                                className="hidden" 
+                                onChange={(e) => handleFileUpload(e.target.files[0], f.label)}
+                                disabled={uploading}
+                              />
+                           </label>
+                           {submission[f.label] ? (
+                             <div className="flex items-center gap-2 text-emerald-600 text-sm font-medium">
+                               <FileCheck className="w-4 h-4" /> Uploaded to Drive
+                             </div>
+                           ) : <span className="text-xs text-slate-400">Supported formats: PDF, IMG, DOC</span>}
+                        </div>
+                        {submission[f.label] && (
+                          <input type="hidden" value={submission[f.label]} required={f.required} />
+                        )}
+                     </div>
                   ) : (
                     <input 
                       type={f.type} 
@@ -560,12 +641,13 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                   </div>
                 </div>
               </div>
-              <div className="pt-4">
-                 <Button variant="primary" type="submit" className="w-full h-12 text-base">Submit Proposal</Button>
+              <div className="pt-4 flex justify-end gap-3">
+                 <Button variant="ghost" onClick={() => setActiveForm(null)}>Cancel</Button>
+                 <Button variant="primary" type="submit" className="px-8" disabled={uploading}>Submit Proposal</Button>
               </div>
             </form>
-          </Card>
-        )}
+        </Modal>
+
       </div>
 
       <div>
@@ -581,306 +663,5 @@ const EmployeePortal = ({ currentUser, showToast }) => {
         </div>
       </div>
     </div>
-  );
-};
-
-// --- Manager Portal ---
-
-const ManagerPortal = ({ currentUser, showToast }) => {
-  const [ideas, setIdeas] = useState([]);
-  const [filter, setFilter] = useState('all');
-
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), s => {
-      setIdeas(s.docs.map(d => ({id:d.id, ...d.data()})));
-    });
-    return () => unsub();
-  }, []);
-
-  const handleStatus = async (id, status) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
-      status, reviewedBy: currentUser.name, reviewedAt: new Date().toISOString()
-    });
-    showToast(`Proposal status updated: ${status}`);
-  };
-
-  const handleComment = async (id, text) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
-      comments: arrayUnion({ author: currentUser.name, text, date: new Date().toISOString() })
-    });
-    showToast("Feedback recorded");
-  };
-
-  const myDeptIdeas = ideas.filter(i => i.mainDepartment === currentUser.department);
-  const otherIdeas = ideas.filter(i => i.mainDepartment !== currentUser.department);
-  const displayedIdeas = filter === 'myDept' ? myDeptIdeas : [...myDeptIdeas, ...otherIdeas];
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900">Executive Overview</h2>
-          <p className="text-slate-500">Review and approve operational proposals.</p>
-        </div>
-        <div className="flex bg-white rounded-sm shadow-sm border border-slate-200 p-1">
-          <button onClick={() => setFilter('all')} className={`px-6 py-2 text-sm rounded-sm font-semibold transition-all ${filter === 'all' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-900'}`}>Global View</button>
-          <button onClick={() => setFilter('myDept')} className={`px-6 py-2 text-sm rounded-sm font-semibold transition-all ${filter === 'myDept' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-900'}`}>My Department</button>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        {displayedIdeas.map(idea => (
-          <IdeaCard 
-            key={idea.id} 
-            idea={idea} 
-            isManager={true} 
-            canApprove={idea.mainDepartment === currentUser.department} 
-            onStatus={handleStatus} 
-            onComment={handleComment} 
-          />
-        ))}
-        {displayedIdeas.length === 0 && (
-          <div className="p-12 text-center border-2 border-dashed border-slate-300 rounded-sm">
-             <div className="text-slate-400 font-medium">No pending proposals found in this view.</div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// --- Shared Idea Card Component ---
-
-const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, isEmployeeView }) => {
-  const [comment, setComment] = useState('');
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <Card className={`transition-all duration-200 hover:shadow-md ${isManager && canApprove && idea.status === STATUS.PENDING ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-transparent'}`}>
-      <div className="p-5">
-        <div className="flex justify-between items-start">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <Badge status={idea.status} />
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{idea.mainDepartment}</span>
-              {idea.reviewedBy && (
-                 <span className="text-[10px] text-slate-400 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Reviewed by {idea.reviewedBy}</span>
-              )}
-            </div>
-            <h4 className="font-bold text-lg text-slate-900 leading-tight">{idea.formTitle}</h4>
-            <div className="text-xs text-slate-500 mt-1 font-medium">
-              By {idea.employeeName} • {new Date(idea.submittedAt).toLocaleDateString()}
-            </div>
-          </div>
-          <button onClick={() => setExpanded(!expanded)} className="ml-4 p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors">
-            {expanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-          </button>
-        </div>
-        
-        {idea.subDepartments && idea.subDepartments.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-4">
-            {idea.subDepartments.map(sub => (
-              <span key={sub} className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-1 rounded-sm">{sub}</span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {expanded && (
-        <div className="px-5 pb-5 border-t border-slate-100 animate-fade-in">
-          <div className="grid grid-cols-1 gap-6 py-6">
-            {Object.entries(idea.formData).map(([k, v]) => (
-              <div key={k} className="group">
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 group-hover:text-slate-600 transition-colors">{k}</span>
-                <p className="text-sm text-slate-800 leading-relaxed">{v}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-slate-50 border border-slate-100 p-4 rounded-sm mb-6">
-            <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-               <MessageSquare className="w-3 h-3" /> Executive Feedback
-            </h5>
-            {idea.comments && idea.comments.length > 0 ? (
-              <div className="space-y-3 mb-4 max-h-48 overflow-y-auto">
-                {idea.comments.map((c, i) => (
-                  <div key={i} className="text-sm bg-white p-3 rounded-sm border border-slate-200 shadow-sm">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-bold text-slate-900 text-xs">{c.author}</span>
-                      <span className="text-[10px] text-slate-400">{new Date(c.date).toLocaleDateString()}</span>
-                    </div>
-                    <span className="text-slate-600">{c.text}</span>
-                  </div>
-                ))}
-              </div>
-            ) : <p className="text-xs text-slate-400 italic mb-4">No feedback recorded yet.</p>}
-            
-            {(isManager || isEmployeeView) && (
-               <div className="flex gap-2">
-                 <input 
-                   className="flex-1 text-sm px-3 py-2 border border-slate-300 rounded-sm focus:outline-none focus:border-slate-500" 
-                   placeholder="Type your comment..." 
-                   value={comment} 
-                   onChange={e => setComment(e.target.value)} 
-                   onKeyDown={e => { if (e.key === 'Enter' && comment.trim() && onComment) { onComment(idea.id, comment); setComment(''); }}}
-                 />
-                 {onComment && (
-                   <button onClick={() => { onComment(idea.id, comment); setComment(''); }} disabled={!comment.trim()} className="bg-slate-800 text-white hover:bg-slate-700 px-3 py-2 rounded-sm disabled:bg-slate-300">
-                     <Send className="w-4 h-4" />
-                   </button>
-                 )}
-               </div>
-            )}
-          </div>
-
-          {isManager && canApprove && idea.status === STATUS.PENDING && (
-            <div className="flex gap-3 pt-2 border-t border-slate-100">
-              <Button variant="danger" className="flex-1" onClick={() => onStatus(idea.id, STATUS.REJECTED)}>Reject Proposal</Button>
-              <Button variant="success" className="flex-1" onClick={() => onStatus(idea.id, STATUS.APPROVED)}>Authorize</Button>
-            </div>
-          )}
-           
-          {isManager && !canApprove && (
-            <div className="text-center text-xs text-slate-400 italic pt-2 flex items-center justify-center gap-2">
-              <XCircle className="w-4 h-4" /> Read Only: Authority lies with {idea.mainDepartment}
-            </div>
-          )}
-        </div>
-      )}
-    </Card>
-  );
-};
-
-// --- Admin Sub-Components ---
-
-const UserManagement = ({ users, departments, onApprove }) => {
-  const pending = users.filter(u => u.status === STATUS.PENDING);
-  return (
-    <Card className="p-6">
-      <div className="flex items-center gap-2 mb-6">
-         <UserPlus className="w-5 h-5 text-slate-900" />
-         <h3 className="font-bold text-lg text-slate-900">Pending Access Requests</h3>
-      </div>
-      {pending.length === 0 ? (
-        <div className="text-slate-400 text-sm italic py-4">No pending requests at this time.</div>
-      ) : (
-        <div className="divide-y divide-slate-100">
-          {pending.map(u => (
-            <div key={u.id} className="py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <div className="font-bold text-slate-900">{u.name}</div>
-                <div className="text-xs text-slate-500 font-mono">{u.email}</div>
-              </div>
-              <UserApprovalRow user={u} depts={departments} onApprove={onApprove} />
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
-  );
-};
-
-const UserApprovalRow = ({ user, depts, onApprove }) => {
-  const [role, setRole] = useState(ROLES.EMPLOYEE);
-  const [dept, setDept] = useState('');
-  return (
-    <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-sm border border-slate-200">
-      <select className="text-xs border-none bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer" value={role} onChange={e => setRole(e.target.value)}>
-        <option value={ROLES.EMPLOYEE}>Employee</option><option value={ROLES.MANAGER}>Manager</option>
-      </select>
-      <div className="w-px h-4 bg-slate-300"></div>
-      <select className="text-xs border-none bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer w-32" value={dept} onChange={e => setDept(e.target.value)}>
-        <option value="">Select Dept...</option>{depts.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-      </select>
-      <Button variant="success" onClick={() => onApprove(user.id, role, dept)} disabled={!dept} className="py-1 px-3 text-xs h-7">Approve</Button>
-    </div>
-  );
-};
-
-const DepartmentManager = ({ departments, showToast }) => {
-  const [name, setName] = useState('');
-  const add = async () => {
-    if(!name) return;
-    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.DEPARTMENTS), { name });
-    setName(''); showToast("Organization unit added");
-  };
-  return (
-    <Card className="p-6">
-      <h3 className="font-bold text-lg text-slate-900 mb-6">Organizational Structure</h3>
-      <div className="flex gap-2 mb-8">
-        <div className="flex-1">
-          <input className="w-full px-4 py-2 border border-slate-300 rounded-sm focus:outline-none focus:border-slate-900" value={name} onChange={e => setName(e.target.value)} placeholder="New Department Name" />
-        </div>
-        <Button onClick={add} variant="primary" className="h-full">Add Unit</Button>
-      </div>
-      <div className="flex flex-wrap gap-3">
-        {departments.map(d => (
-          <div key={d.id} className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-sm text-sm font-semibold shadow-sm flex items-center gap-2">
-            <Briefcase className="w-3 h-3 text-slate-400" />
-            {d.name}
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-};
-
-const FormBuilder = ({ forms, showToast }) => {
-  const [isCreating, setIsCreating] = useState(false);
-  const [newForm, setNewForm] = useState({ category: '', title: '', fields: [] });
-  const [field, setField] = useState({ label: '', type: 'text' });
-
-  const save = async () => {
-    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS), newForm);
-    showToast("Template Saved"); setIsCreating(false); setNewForm({ category: '', title: '', fields: [] });
-  };
-
-  if(!isCreating) return (
-    <Card className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="font-bold text-lg text-slate-900">Form Templates</h3>
-        <Button onClick={() => setIsCreating(true)} variant="primary"><Plus className="w-4 h-4 mr-1" /> New Template</Button>
-      </div>
-      <div className="grid gap-3">
-        {forms.map(f => (
-          <div key={f.id} className="p-4 border border-slate-200 rounded-sm flex justify-between items-center hover:bg-slate-50 transition-colors">
-            <span className="font-bold text-slate-800">{f.title}</span>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{f.category}</span>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-
-  return (
-    <Card className="p-8 border-l-4 border-l-slate-900">
-      <h3 className="font-bold text-xl text-slate-900 mb-6">Design New Template</h3>
-      <div className="space-y-4 mb-8">
-        <Input label="Category" value={newForm.category} onChange={e => setNewForm({...newForm, category: e.target.value})} placeholder="e.g. Health & Safety" />
-        <Input label="Title" value={newForm.title} onChange={e => setNewForm({...newForm, title: e.target.value})} placeholder="e.g. Incident Report" />
-      </div>
-
-      <div className="bg-slate-50 p-6 rounded-sm border border-slate-200 mb-8">
-        <h4 className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-4">Field Configuration</h4>
-        <div className="flex gap-3 mb-4">
-          <input className="flex-1 px-3 py-2 border border-slate-300 rounded-sm text-sm" placeholder="Field Label" value={field.label} onChange={e => setField({...field, label: e.target.value})} />
-          <select className="px-3 py-2 border border-slate-300 rounded-sm text-sm bg-white" value={field.type} onChange={e => setField({...field, type: e.target.value})}>
-            <option value="text">Text Input</option><option value="textarea">Text Area</option><option value="number">Numeric</option><option value="date">Date Picker</option>
-          </select>
-          <Button onClick={() => { if(field.label) { setNewForm(prev => ({...prev, fields: [...prev.fields, field]})); setField({label:'', type:'text'}); }}} variant="secondary">Add</Button>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {newForm.fields.map((f, i) => (
-            <span key={i} className="bg-white border border-slate-300 px-3 py-1 rounded-sm text-xs font-mono text-slate-600 flex items-center gap-2">
-              {f.label} <span className="opacity-50">({f.type})</span>
-            </span>
-          ))}
-        </div>
-      </div>
-      <div className="flex justify-end gap-3">
-        <Button variant="ghost" onClick={() => setIsCreating(false)}>Discard</Button>
-        <Button onClick={save} variant="primary">Publish Template</Button>
-      </div>
-    </Card>
   );
 };
