@@ -11,13 +11,12 @@ import {
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
   UserPlus, Layout, Filter, ChevronDown, ChevronUp, Send, 
-  Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, FileDown, Sparkles, BrainCircuit, Rocket, ArrowLeft, Target, Award, MoreHorizontal, BarChart3, WifiOff, ChevronLeft, ChevronRight
+  Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, FileDown, Sparkles, BrainCircuit, Rocket, ArrowLeft, Target, Award, MoreHorizontal, BarChart3, WifiOff, ChevronLeft, ChevronRight, AlertCircle
 } from 'lucide-react';
 
 // --- Configuration ---
 
 // 1. Firebase Config
-// Use environment config if available to prevent auth token mismatch, otherwise fallback to hardcoded
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
   apiKey: "AIzaSyAMOU-IK6UfKk75UR0P_Rs80z0uEsssQ9o",
   authDomain: "epromdeploy.firebaseapp.com",
@@ -309,7 +308,7 @@ const Button = ({ children, onClick, variant = 'primary', className = '', type =
 const Input = ({ label, type = "text", value, onChange, placeholder, required = false }) => (
   <div className="mb-5 group">
     {label && (
-      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 group-focus-within:text-indigo-600 transition-colors">
+      <label className="block text-sm font-semibold text-slate-700 mb-2 group-focus-within:text-indigo-600 transition-colors">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
     )}
@@ -318,7 +317,7 @@ const Input = ({ label, type = "text", value, onChange, placeholder, required = 
       value={value}
       onChange={onChange}
       placeholder={placeholder}
-      className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 text-sm rounded-md focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-slate-400 hover:border-slate-300"
+      className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 text-sm rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all placeholder-slate-400 hover:border-slate-300"
       required={required}
     />
   </div>
@@ -575,38 +574,45 @@ const RatingSystem = ({ idea, onRate, kpis }) => {
       
       <div className="space-y-6">
         {kpis.map((kpi, idx) => (
-          <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-4 border-b border-slate-200 pb-4 last:border-0 last:pb-0">
-            <div className="flex-1">
-              <div className="text-sm font-bold text-slate-800">{kpi.label} <span className="text-indigo-500 text-xs font-medium ml-1">({kpi.weight}%)</span></div>
-              <div className="text-xs text-slate-500 mt-0.5">{kpi.description}</div>
+          <div key={idx} className="flex flex-col md:flex-row md:items-start gap-4 border-b border-slate-200 pb-6 last:border-0 last:pb-0">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                 <span className="text-sm font-bold text-slate-800 leading-tight">{kpi.label}</span>
+                 <span className="flex-shrink-0 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">Weight: {kpi.weight}%</span>
+              </div>
+              <p className="text-xs text-slate-500 leading-relaxed max-w-md">{kpi.description}</p>
             </div>
-            <div className="flex items-center gap-3">
+            
+            <div className="flex items-center gap-4 w-full md:w-auto mt-2 md:mt-0 bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+              <span className="text-xs font-bold text-slate-400">1</span>
               <input 
                 type="range" 
                 min="1" 
                 max="5" 
+                step="1"
                 value={scores[kpi.label] || 0} 
                 onChange={(e) => handleScoreChange(kpi.label, e.target.value)}
-                className="w-32 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 hover:accent-indigo-500"
+                className="flex-1 md:w-32 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 hover:accent-indigo-500"
               />
-              <span className={`w-8 h-8 flex items-center justify-center font-bold text-sm border rounded-full transition-colors ${scores[kpi.label] > 0 ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-200'}`}>
+              <span className="text-xs font-bold text-slate-400">5</span>
+              <div className={`w-9 h-9 ml-2 flex-shrink-0 flex items-center justify-center font-bold text-base rounded-full border-2 transition-all duration-300 ${scores[kpi.label] > 0 ? 'bg-indigo-600 text-white border-indigo-600 shadow-md transform scale-110' : 'bg-white text-slate-300 border-slate-200'}`}>
                 {scores[kpi.label] || '-'}
-              </span>
+              </div>
             </div>
           </div>
         ))}
       </div>
       
       <div className="mt-8 pt-6 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
-        <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm flex items-center gap-3">
-           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Grade</div>
-           <div className="w-px h-6 bg-slate-200"></div>
+        <div className="bg-white px-5 py-3 rounded-lg border border-slate-200 shadow-sm flex items-center gap-4 w-full sm:w-auto">
+           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Overall Grade</div>
+           <div className="w-px h-8 bg-slate-200"></div>
            <div className="flex items-baseline gap-2">
-             <span className={`text-2xl font-extrabold ${currentResult.percentage > 0 ? 'text-indigo-600' : 'text-slate-300'}`}>{currentResult.grade}</span>
-             <span className="text-sm font-medium text-slate-500">({currentResult.percentage}%)</span>
+             <span className={`text-3xl font-black ${currentResult.percentage > 0 ? 'text-indigo-600' : 'text-slate-300'}`}>{currentResult.grade}</span>
+             <span className="text-sm font-bold text-slate-500">({currentResult.percentage}%)</span>
            </div>
         </div>
-        <Button onClick={submitRating} className="px-8 shadow-indigo-100">Save & Update Rating</Button>
+        <Button onClick={submitRating} className="px-8 h-12 shadow-indigo-100 w-full sm:w-auto">Save & Update Rating</Button>
       </div>
     </div>
   );
@@ -803,7 +809,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
               <div className="space-y-8">
                   {Object.entries(idea.formData).map(([k, v]) => (
                     <div key={k} className="group">
-                      <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 group-hover:text-indigo-600 transition-colors">{k}</span>
+                      <span className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 group-hover:text-indigo-600 transition-colors">{k}</span>
                       {Array.isArray(v) ? (
                         <div className="flex flex-wrap gap-2">
                           {v.map((val, idx) => (
@@ -1610,13 +1616,13 @@ const EmployeePortal = ({ currentUser, showToast }) => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {forms.map(form => (
-            <button key={form.id} onClick={() => { setActiveForm(form); setEditingIdeaId(null); setSubmission({}); }} className="flex items-start p-6 bg-white border border-slate-200 rounded-sm hover:border-slate-400 hover:shadow-md transition-all text-left group">
-              <div className="mr-4 bg-slate-100 p-3 rounded-sm group-hover:bg-slate-200">
-                <FileText className="w-6 h-6 text-slate-700" />
+            <button key={form.id} onClick={() => { setActiveForm(form); setEditingIdeaId(null); setSubmission({}); }} className="flex items-start p-6 bg-white border border-slate-200 rounded-xl hover:border-indigo-200 hover:shadow-md transition-all text-left group">
+              <div className="mr-4 bg-slate-50 p-3 rounded-lg group-hover:bg-indigo-50 transition-colors">
+                <FileText className="w-6 h-6 text-slate-600 group-hover:text-indigo-600" />
               </div>
               <div>
                 <div className="font-bold text-lg text-slate-800 group-hover:text-slate-900">{form.title}</div>
-                <div className="text-sm text-slate-500 mt-1 uppercase tracking-wide text-[10px]">{form.category}</div>
+                <div className="text-sm text-slate-500 mt-1 uppercase tracking-wide text-[10px] font-medium">{form.category}</div>
               </div>
             </button>
           ))}
@@ -1624,117 +1630,162 @@ const EmployeePortal = ({ currentUser, showToast }) => {
 
         {/* Modal for Form Submission */}
         <Modal isOpen={!!activeForm} onClose={() => { setActiveForm(null); setEditingIdeaId(null); }} title={editingIdeaId ? `Edit: ${activeForm?.title}` : (activeForm?.title || "New Submission")}>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="mb-6 pb-4 border-b border-slate-100">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Category: {activeForm?.category}</span>
+            <form onSubmit={handleSubmit} className="space-y-8">
+              
+              {/* Header Info */}
+              <div className="bg-indigo-50/50 p-4 rounded-lg border border-indigo-100 flex items-start gap-3">
+                 <AlertCircle className="w-5 h-5 text-indigo-600 mt-0.5 flex-shrink-0" />
+                 <div>
+                    <h4 className="text-sm font-bold text-indigo-900">Submission Guidelines</h4>
+                    <p className="text-xs text-indigo-700 mt-1">Please provide detailed information. Fields marked with <span className="text-rose-500">*</span> are required. Use AI refinement for clarity.</p>
+                 </div>
               </div>
-              {activeForm?.fields.map((f, i) => (
-                <div key={i}>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                    {f.label} {f.required && <span className="text-red-500">*</span>}
-                  </label>
-                  {f.type === 'textarea' ? (
-                    <div className="relative">
-                      <textarea 
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-sm focus:outline-none focus:border-slate-500 focus:bg-white transition-all min-h-[120px]" 
+
+              <div className="space-y-6">
+                {activeForm?.fields.map((f, i) => (
+                  <div key={i} className="group">
+                    <label className="block text-sm font-semibold text-slate-700 mb-2 group-focus-within:text-indigo-600 transition-colors">
+                      {f.label} {f.required && <span className="text-rose-500">*</span>}
+                    </label>
+                    
+                    {f.type === 'textarea' ? (
+                      <div className="relative">
+                        <textarea 
+                          className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 text-sm rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all min-h-[120px] shadow-sm resize-y" 
+                          required={f.required} 
+                          value={submission[f.label] || ''}
+                          onChange={e => setSubmission({...submission, [f.label]: e.target.value})} 
+                          placeholder={`Enter ${f.label.toLowerCase()}...`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRefine(f.label, submission[f.label])}
+                          className="absolute right-3 bottom-3 text-xs bg-white text-indigo-600 px-3 py-1.5 rounded-full border border-indigo-100 flex items-center gap-1.5 hover:bg-indigo-50 hover:border-indigo-200 transition-all shadow-sm font-medium"
+                          title="Rewrite professionally with AI"
+                        >
+                          <Sparkles className="w-3 h-3" /> Refine with AI
+                        </button>
+                      </div>
+                    ) : f.type === 'dropdown' ? (
+                       <div className="relative">
+                         <select 
+                            className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 text-sm rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all appearance-none shadow-sm"
+                            required={f.required}
+                            value={submission[f.label] || ''}
+                            onChange={e => setSubmission({...submission, [f.label]: e.target.value})}
+                         >
+                            <option value="">Select an option...</option>
+                            {f.options && f.options.map((opt, idx) => (
+                               <option key={idx} value={opt}>{opt}</option>
+                            ))}
+                         </select>
+                         <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                       </div>
+                    ) : f.type === 'checkbox' ? (
+                       <div className="flex flex-wrap gap-3 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                          {f.options && f.options.map((opt, idx) => (
+                             <label key={idx} className="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer hover:text-slate-900 bg-white px-3 py-2 rounded border border-slate-200 shadow-sm transition-all hover:border-slate-300">
+                                <input 
+                                   type="checkbox" 
+                                   className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                                   checked={(submission[f.label] || []).includes(opt)}
+                                   onChange={() => handleCheckboxChange(f.label, opt)}
+                                />
+                                {opt}
+                             </label>
+                          ))}
+                       </div>
+                    ) : (f.type === 'file' || f.type === 'image') ? (
+                       <div className="bg-slate-50 border border-dashed border-slate-300 p-6 rounded-lg hover:bg-slate-100 transition-colors text-center">
+                          {submission[f.label] ? (
+                             <div className="flex flex-col items-center gap-2">
+                               <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
+                                 <FileCheck className="w-5 h-5" />
+                               </div>
+                               <span className="text-sm font-medium text-emerald-700">File Uploaded Successfully</span>
+                               <button 
+                                 type="button" 
+                                 onClick={() => setSubmission({...submission, [f.label]: null})}
+                                 className="text-xs text-red-500 hover:text-red-700 underline mt-1"
+                               >
+                                 Remove File
+                               </button>
+                             </div>
+                          ) : (
+                             <label className="flex flex-col items-center gap-2 cursor-pointer w-full h-full">
+                                {uploading ? (
+                                  <>
+                                    <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                                    <span className="text-sm text-indigo-600 font-medium">Uploading to Drive...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="w-10 h-10 bg-white rounded-full shadow-sm flex items-center justify-center text-slate-400 mb-1">
+                                      <Upload className="w-5 h-5" />
+                                    </div>
+                                    <span className="text-sm font-medium text-slate-700">Click to Upload Document</span>
+                                    <span className="text-xs text-slate-400">Format: {f.type === 'image' ? 'Images (JPG, PNG)' : 'PDF, DOCX, Images'} (Max 5MB)</span>
+                                    <input 
+                                      type="file" 
+                                      className="hidden" 
+                                      accept={f.type === 'image' ? "image/*" : "*/*"}
+                                      onChange={(e) => handleFileUpload(e.target.files[0], f.label)}
+                                      disabled={uploading}
+                                    />
+                                  </>
+                                )}
+                             </label>
+                          )}
+                          {submission[f.label] && <input type="hidden" value={submission[f.label]} required={f.required} />}
+                       </div>
+                    ) : (
+                      <input 
+                        type={f.type} 
+                        className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 text-sm rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all shadow-sm placeholder-slate-400" 
                         required={f.required} 
                         value={submission[f.label] || ''}
                         onChange={e => setSubmission({...submission, [f.label]: e.target.value})} 
+                        placeholder={`Enter ${f.label.toLowerCase()}...`}
                       />
-                      <button
-                        type="button"
-                        onClick={() => handleRefine(f.label, submission[f.label])}
-                        className="absolute right-2 bottom-2 text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded border border-indigo-100 flex items-center gap-1 hover:bg-indigo-100 transition-colors"
-                        title="Rewrite professionally with AI"
-                      >
-                        <Sparkles className="w-3 h-3" /> Refine with AI
-                      </button>
-                    </div>
-                  ) : f.type === 'dropdown' ? (
-                     <select 
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-sm focus:outline-none focus:border-slate-500 focus:bg-white"
-                        required={f.required}
-                        value={submission[f.label] || ''}
-                        onChange={e => setSubmission({...submission, [f.label]: e.target.value})}
-                     >
-                        <option value="">Select an option...</option>
-                        {f.options && f.options.map((opt, idx) => (
-                           <option key={idx} value={opt}>{opt}</option>
-                        ))}
-                     </select>
-                  ) : f.type === 'checkbox' ? (
-                     <div className="flex flex-wrap gap-3">
-                        {f.options && f.options.map((opt, idx) => (
-                           <label key={idx} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                              <input 
-                                 type="checkbox" 
-                                 className="rounded border-slate-300 text-slate-900 focus:ring-slate-500"
-                                 checked={(submission[f.label] || []).includes(opt)}
-                                 onChange={() => handleCheckboxChange(f.label, opt)}
-                              />
-                              {opt}
-                           </label>
-                        ))}
-                     </div>
-                  ) : (f.type === 'file' || f.type === 'image') ? (
-                     <div className="bg-slate-50 border border-slate-200 p-4 rounded-sm">
-                        <div className="flex items-center gap-4">
-                           <label className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-sm cursor-pointer hover:bg-slate-700 transition-colors">
-                              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                              <span>{uploading ? "Uploading..." : "Select File"}</span>
-                              <input 
-                                type="file" 
-                                className="hidden" 
-                                accept={f.type === 'image' ? "image/*" : "*/*"}
-                                onChange={(e) => handleFileUpload(e.target.files[0], f.label)}
-                                disabled={uploading}
-                              />
-                           </label>
-                           {submission[f.label] ? (
-                             <div className="flex items-center gap-2 text-emerald-600 text-sm font-medium">
-                               <FileCheck className="w-4 h-4" /> Uploaded
-                             </div>
-                           ) : <span className="text-xs text-slate-400">Format: {f.type === 'image' ? 'Images only' : 'Any Document'}</span>}
-                        </div>
-                        {submission[f.label] && (
-                          <input type="hidden" value={submission[f.label]} required={f.required} />
-                        )}
-                     </div>
-                  ) : (
-                    <input 
-                      type={f.type} 
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-sm focus:outline-none focus:border-slate-500 focus:bg-white transition-all" 
-                      required={f.required} 
-                      value={submission[f.label] || ''}
-                      onChange={e => setSubmission({...submission, [f.label]: e.target.value})} 
-                    />
-                  )}
-                </div>
-              ))}
+                    )}
+                  </div>
+                ))}
+              </div>
 
-              <div className="bg-slate-50 p-6 rounded-sm border border-slate-200 space-y-6 mt-8">
+              {/* Footer Section */}
+              <div className="bg-slate-50 p-6 rounded-lg border border-slate-200 space-y-6">
                 <div>
-                  <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">Primary Authority (Approval)</label>
-                  <select className="w-full p-3 bg-white border border-slate-300 rounded-sm text-sm" value={targetDept} onChange={e => setTargetDept(e.target.value)} required>
-                    <option value="">Select Department...</option>
-                    {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-                  </select>
+                  <label className="block text-sm font-semibold text-slate-900 mb-3">Primary Authority (Approval)</label>
+                  <div className="relative">
+                    <select className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 text-sm rounded-lg focus:outline-none focus:border-indigo-500 shadow-sm appearance-none" value={targetDept} onChange={e => setTargetDept(e.target.value)} required>
+                      <option value="">Select Department...</option>
+                      {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">Cross-Functional Tags</label>
+                  <label className="block text-sm font-semibold text-slate-900 mb-3">Cross-Functional Tags</label>
                   <div className="flex flex-wrap gap-2">
                     {departments.map(d => (
-                      <button type="button" key={d.id} onClick={() => toggleSubDept(d.name)}
-                        className={`px-3 py-1.5 rounded-sm text-xs font-semibold border transition-colors ${subDepts.includes(d.name) ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-300 hover:border-slate-500'}`}>
+                      <button 
+                        type="button" 
+                        key={d.id} 
+                        onClick={() => toggleSubDept(d.name)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all duration-200 ${subDepts.includes(d.name) ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
+                      >
                         {d.name}
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
-              <div className="pt-4 flex justify-end gap-3">
+
+              <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
                  <Button variant="ghost" onClick={() => { setActiveForm(null); setEditingIdeaId(null); }}>Cancel</Button>
-                 <Button variant="primary" type="submit" className="px-8" disabled={uploading}>{editingIdeaId ? "Update Proposal" : "Submit Proposal"}</Button>
+                 <Button variant="primary" type="submit" className="px-8 shadow-lg shadow-indigo-100" disabled={uploading}>
+                   {editingIdeaId ? "Update Proposal" : "Submit Proposal"}
+                 </Button>
               </div>
             </form>
         </Modal>
