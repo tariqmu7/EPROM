@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore, initializeFirestore, collection, addDoc, query, where, 
-  onSnapshot, doc, updateDoc, deleteDoc, getDocs, arrayUnion 
+  onSnapshot, doc, updateDoc, deleteDoc, getDocs, getDoc, arrayUnion, setDoc 
 } from 'firebase/firestore';
 import { 
   getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
@@ -11,7 +11,7 @@ import {
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
   UserPlus, Layout, Filter, ChevronDown, ChevronUp, Send, 
-  BarChart3, Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save
+  BarChart3, Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -46,7 +46,8 @@ const COLLECTIONS = {
   USERS: 'users',
   FORMS: 'forms',
   IDEAS: 'ideas',
-  DEPARTMENTS: 'departments'
+  DEPARTMENTS: 'departments',
+  GUESTS: 'guests'
 };
 
 const ROLES = {
@@ -98,9 +99,11 @@ const Button = React.memo(({ children, onClick, variant = 'primary', className =
 
 const Input = React.memo(({ label, type = "text", value, onChange, placeholder, required = false }) => (
   <div className="mb-5">
-    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-      {label} {required && <span className="text-red-500">*</span>}
-    </label>
+    {label && (
+      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+    )}
     <input
       type={type}
       value={value}
@@ -153,9 +156,9 @@ const Modal = ({ isOpen, onClose, title, children }) => {
   );
 };
 
-// --- Shared Components (Defined BEFORE Portals to fix ReferenceErrors) ---
+// --- Shared Components (Defined BEFORE Portals) ---
 
-const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateComment, isEmployeeView, onEditIdea, currentUser }) => {
+const IdeaCard = React.memo(({ idea, isManager, canApprove, onStatus, onComment, onUpdateComment, isEmployeeView, onEditIdea, onDeleteIdea, currentUser }) => {
   const [comment, setComment] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState(null);
@@ -164,6 +167,13 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
   // Helper to detect if a string is a URL
   const isUrl = (str) => {
     try { return Boolean(new URL(str)); } catch(e){ return false; }
+  };
+
+  const copyShareLink = (e) => {
+    e.stopPropagation();
+    const url = `${window.location.origin}${window.location.pathname}?share=${idea.id}`;
+    navigator.clipboard.writeText(url);
+    alert("Guest Link Copied to Clipboard!");
   };
 
   const handleCommentSubmit = useCallback(() => {
@@ -188,7 +198,6 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
     }
   };
 
-  // Allow editing only if not approved (or if Manager wants to change decision)
   const isEditable = idea.status !== STATUS.APPROVED;
 
   return (
@@ -213,15 +222,35 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
             </div>
           </div>
           <div className="flex items-center gap-2">
-             {/* Edit Button for Employees */}
-             {isEmployeeView && isEditable && onEditIdea && (
-               <button 
-                 onClick={(e) => { e.stopPropagation(); onEditIdea(idea); }} 
-                 className="p-2 text-slate-400 hover:text-indigo-600 bg-slate-50 rounded-full transition-colors z-10"
-                 title="Edit Proposal"
-               >
-                 <Pencil className="w-4 h-4" />
-               </button>
+             <button 
+                onClick={copyShareLink}
+                className="p-2 text-slate-400 hover:text-emerald-600 bg-slate-50 rounded-full transition-colors z-10"
+                title="Copy Guest Link"
+             >
+                <Share2 className="w-4 h-4" />
+             </button>
+             
+             {isEmployeeView && isEditable && (
+               <>
+                 {onEditIdea && (
+                   <button 
+                     onClick={(e) => { e.stopPropagation(); onEditIdea(idea); }} 
+                     className="p-2 text-slate-400 hover:text-indigo-600 bg-slate-50 rounded-full transition-colors z-10"
+                     title="Edit Proposal"
+                   >
+                     <Pencil className="w-4 h-4" />
+                   </button>
+                 )}
+                 {onDeleteIdea && (
+                   <button 
+                     onClick={(e) => { e.stopPropagation(); if(confirm('Delete this idea?')) onDeleteIdea(idea.id); }} 
+                     className="p-2 text-slate-400 hover:text-red-600 bg-slate-50 rounded-full transition-colors z-10"
+                     title="Delete Proposal"
+                   >
+                     <Trash2 className="w-4 h-4" />
+                   </button>
+                 )}
+               </>
              )}
              <div className="p-2 text-slate-400 hover:text-slate-700 bg-slate-50 rounded-full transition-colors">
                <ExternalLink className="w-4 h-4" />
@@ -239,7 +268,6 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
       </div>
     </Card>
 
-    {/* Full Scale Modal */}
     <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={idea.formTitle}>
         <div className="mb-6 flex items-center gap-4 border-b border-slate-100 pb-4">
            <Badge status={idea.status} />
@@ -275,7 +303,6 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
                       <span className="font-bold text-slate-900 text-xs">{c.author}</span>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-slate-400">{new Date(c.date).toLocaleDateString()}</span>
-                        {/* Edit Comment Button */}
                         {currentUser && currentUser.name === c.author && (
                           <button onClick={() => startEditComment(c)} className="text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
                             <Pencil className="w-3 h-3" />
@@ -320,17 +347,14 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
             )}
         </div>
 
-        {/* Manager Actions - Always show if allowed, to enable "Changing Decision" */}
         {isManager && canApprove && (
             <div className="flex gap-3 pt-6 mt-6 border-t border-slate-100">
-              {/* Show Reject Option */}
               {idea.status !== STATUS.REJECTED && (
                 <Button variant="danger" className="flex-1" onClick={() => { onStatus(idea.id, STATUS.REJECTED); setShowModal(false); }}>
                    {idea.status === STATUS.APPROVED ? "Revoke Approval & Reject" : "Reject Proposal"}
                 </Button>
               )}
               
-              {/* Show Approve Option */}
               {idea.status !== STATUS.APPROVED && (
                 <Button variant="success" className="flex-1" onClick={() => { onStatus(idea.id, STATUS.APPROVED); setShowModal(false); }}>
                    {idea.status === STATUS.REJECTED ? "Reconsider & Approve" : "Authorize"}
@@ -347,9 +371,9 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
     </Modal>
     </>
   );
-};
+});
 
-const UserApprovalRow = ({ user, depts, onApprove, isEditMode, onUpdate }) => {
+const UserApprovalRow = ({ user, depts, onApprove, isEditMode, onUpdate, onDelete }) => {
   const [role, setRole] = useState(user.role || ROLES.EMPLOYEE);
   const [dept, setDept] = useState(user.department || '');
   const [isEditing, setIsEditing] = useState(false);
@@ -362,15 +386,12 @@ const UserApprovalRow = ({ user, depts, onApprove, isEditMode, onUpdate }) => {
   const handleAction = () => {
     if (isEditMode) {
       if (isEditing) {
-        // Save changes
         onUpdate(user.id, { role, department: dept });
         setIsEditing(false);
       } else {
-        // Enable editing
         setIsEditing(true);
       }
     } else {
-      // Approve Mode
       onApprove(user.id, role, dept);
     }
   };
@@ -405,24 +426,33 @@ const UserApprovalRow = ({ user, depts, onApprove, isEditMode, onUpdate }) => {
       >
         {isEditMode ? (isEditing ? <Save className="w-3 h-3" /> : <Pencil className="w-3 h-3" />) : "Approve"}
       </Button>
+      
+      {/* Delete User Button for Admin */}
+      {onDelete && (
+        <button 
+          onClick={() => { if(confirm("Are you sure you want to remove this user?")) onDelete(user.id); }} 
+          className="text-slate-400 hover:text-red-600 p-1 ml-1"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      )}
     </div>
   );
 };
 
-const UserManagement = ({ users, departments, onApprove, onUpdate }) => {
+const UserManagement = ({ users, departments, onApprove, onUpdate, onDelete }) => {
   const pending = useMemo(() => users.filter(u => u.status === STATUS.PENDING), [users]);
   const active = useMemo(() => users.filter(u => u.status === STATUS.APPROVED && u.role !== ROLES.ADMIN), [users]);
   
   return (
     <div className="space-y-6">
-      {/* Pending Section */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-6">
            <UserPlus className="w-5 h-5 text-slate-900" />
            <h3 className="font-bold text-lg text-slate-900">Pending Access Requests</h3>
         </div>
         {pending.length === 0 ? (
-          <div className="text-slate-400 text-sm italic py-4">No pending requests at this time.</div>
+          <div className="text-slate-400 text-sm italic py-4">No pending requests.</div>
         ) : (
           <div className="divide-y divide-slate-100">
             {pending.map(u => (
@@ -431,14 +461,13 @@ const UserManagement = ({ users, departments, onApprove, onUpdate }) => {
                   <div className="font-bold text-slate-900">{u.name}</div>
                   <div className="text-xs text-slate-500 font-mono">{u.email}</div>
                 </div>
-                <UserApprovalRow user={u} depts={departments} onApprove={onApprove} />
+                <UserApprovalRow user={u} depts={departments} onApprove={onApprove} onDelete={onDelete} />
               </div>
             ))}
           </div>
         )}
       </Card>
 
-      {/* Active Directory Section */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-6">
            <Users className="w-5 h-5 text-slate-900" />
@@ -458,7 +487,8 @@ const UserManagement = ({ users, departments, onApprove, onUpdate }) => {
                   user={u} 
                   depts={departments} 
                   isEditMode={true} 
-                  onUpdate={onUpdate} 
+                  onUpdate={onUpdate}
+                  onDelete={onDelete} 
                 />
               </div>
             ))}
@@ -466,6 +496,47 @@ const UserManagement = ({ users, departments, onApprove, onUpdate }) => {
         )}
       </Card>
     </div>
+  );
+};
+
+const GuestManagement = ({ guests, onApprove, onAdd, onDelete }) => {
+  const [newEmail, setNewEmail] = useState('');
+  
+  return (
+    <Card className="p-6">
+      <h3 className="font-bold text-lg text-slate-900 mb-6 flex items-center gap-2">
+        <Globe className="w-5 h-5" /> Guest Access Control
+      </h3>
+      
+      <div className="flex gap-2 mb-8 p-4 bg-slate-50 rounded-sm border border-slate-200">
+        <input 
+          className="flex-1 bg-white border border-slate-300 rounded-sm px-3 py-2 text-sm" 
+          placeholder="Pre-approve Guest Email" 
+          value={newEmail} 
+          onChange={e => setNewEmail(e.target.value)} 
+        />
+        <Button onClick={() => { onAdd(newEmail); setNewEmail(''); }} disabled={!newEmail}>Add Guest</Button>
+      </div>
+
+      <div className="space-y-2">
+        {guests.length === 0 && <div className="text-slate-400 text-sm italic">No guests configured.</div>}
+        {guests.map(g => (
+          <div key={g.id} className="flex justify-between items-center p-3 border rounded-sm hover:bg-slate-50">
+            <div className="flex items-center gap-3">
+              <div className={`w-2 h-2 rounded-full ${g.status === STATUS.APPROVED ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              <span className="font-mono text-sm">{g.email}</span>
+              {g.status === STATUS.PENDING && <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded">Pending Request</span>}
+            </div>
+            <div className="flex gap-2">
+              {g.status === STATUS.PENDING && (
+                <Button variant="success" className="px-3 py-1 text-xs h-8" onClick={() => onApprove(g.id)}>Approve</Button>
+              )}
+              <button onClick={() => onDelete(g.id)} className="text-slate-400 hover:text-red-600 p-2"><Trash2 className="w-4 h-4" /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 };
 
@@ -499,7 +570,7 @@ const DepartmentManager = ({ departments, showToast }) => {
 
 const FormBuilder = ({ forms, showToast }) => {
   const [isCreating, setIsCreating] = useState(false);
-  const [editingId, setEditingId] = useState(null); // Track editing state
+  const [editingId, setEditingId] = useState(null); 
   const [newForm, setNewForm] = useState({ category: '', title: '', fields: [] });
   const [field, setField] = useState({ label: '', type: 'text' });
 
@@ -511,11 +582,9 @@ const FormBuilder = ({ forms, showToast }) => {
 
   const save = async () => {
     if (editingId) {
-      // Update existing form
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS, editingId), newForm);
       showToast("Template Updated");
     } else {
-      // Create new form
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS), newForm);
       showToast("Template Saved");
     }
@@ -543,7 +612,6 @@ const FormBuilder = ({ forms, showToast }) => {
               <span className="font-bold text-slate-800">{f.title}</span>
               <span className="ml-3 text-xs font-bold text-slate-400 uppercase tracking-widest">{f.category}</span>
             </div>
-            {/* Edit Button for Admin */}
             <button onClick={() => startEdit(f)} className="text-slate-400 hover:text-indigo-600 p-2 rounded-full hover:bg-white">
               <Pencil className="w-4 h-4" />
             </button>
@@ -566,7 +634,12 @@ const FormBuilder = ({ forms, showToast }) => {
         <div className="flex gap-3 mb-4">
           <input className="flex-1 px-3 py-2 border border-slate-300 rounded-sm text-sm" placeholder="Field Label" value={field.label} onChange={e => setField({...field, label: e.target.value})} />
           <select className="px-3 py-2 border border-slate-300 rounded-sm text-sm bg-white" value={field.type} onChange={e => setField({...field, type: e.target.value})}>
-            <option value="text">Text Input</option><option value="textarea">Text Area</option><option value="number">Numeric</option><option value="date">Date Picker</option><option value="file">File Attachment</option>
+            <option value="text">Text Input</option>
+            <option value="textarea">Text Area</option>
+            <option value="number">Numeric</option>
+            <option value="date">Date Picker</option>
+            <option value="file">File Attachment</option>
+            <option value="image">Image Upload</option> {/* Added Image Type */}
           </select>
           <Button onClick={() => { if(field.label) { setNewForm(prev => ({...prev, fields: [...prev.fields, field]})); setField({label:'', type:'text'}); }}} variant="secondary">Add</Button>
         </div>
@@ -599,12 +672,14 @@ const AdminPortal = ({ showToast }) => {
   const [users, setUsers] = useState([]);
   const [forms, setForms] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [guests, setGuests] = useState([]);
 
   useEffect(() => {
     const unsub1 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS), s => setUsers(s.docs.map(d => ({id:d.id, ...d.data()}))));
     const unsub2 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS), s => setForms(s.docs.map(d => ({id:d.id, ...d.data()}))));
     const unsub3 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.DEPARTMENTS), s => setDepartments(s.docs.map(d => ({id:d.id, ...d.data()}))));
-    return () => { unsub1(); unsub2(); unsub3(); };
+    const unsub4 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS), s => setGuests(s.docs.map(d => ({id:d.id, ...d.data()}))));
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
   }, []);
 
   const approveUser = useCallback(async (id, role, dept) => {
@@ -619,6 +694,26 @@ const AdminPortal = ({ showToast }) => {
     showToast("User details updated.");
   }, [showToast]);
 
+  const deleteUser = useCallback(async (id) => {
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS, id));
+    showToast("User removed.");
+  }, [showToast]);
+
+  const approveGuest = useCallback(async (id) => {
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS, id), { status: STATUS.APPROVED });
+    showToast("Guest access authorized.");
+  }, [showToast]);
+
+  const addGuest = useCallback(async (email) => {
+    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS), { email, status: STATUS.APPROVED, addedAt: new Date().toISOString() });
+    showToast("Guest pre-approved.");
+  }, [showToast]);
+
+  const deleteGuest = useCallback(async (id) => {
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS, id));
+    showToast("Guest removed.");
+  }, [showToast]);
+
   return (
     <div>
       <div className="mb-8">
@@ -630,6 +725,7 @@ const AdminPortal = ({ showToast }) => {
         <div className="md:col-span-3 space-y-2">
           {[
             { id: 'users', label: 'Access Control', icon: Users },
+            { id: 'guests', label: 'Guest Access', icon: Globe },
             { id: 'departments', label: 'Departments', icon: Briefcase },
             { id: 'forms', label: 'Form Templates', icon: Layout }
           ].map(tab => (
@@ -647,7 +743,8 @@ const AdminPortal = ({ showToast }) => {
           ))}
         </div>
         <div className="md:col-span-9">
-          {activeTab === 'users' && <UserManagement users={users} departments={departments} onApprove={approveUser} onUpdate={updateUser} />}
+          {activeTab === 'users' && <UserManagement users={users} departments={departments} onApprove={approveUser} onUpdate={updateUser} onDelete={deleteUser} />}
+          {activeTab === 'guests' && <GuestManagement guests={guests} onApprove={approveGuest} onAdd={addGuest} onDelete={deleteGuest} />}
           {activeTab === 'forms' && <FormBuilder forms={forms} showToast={showToast} />}
           {activeTab === 'departments' && <DepartmentManager departments={departments} showToast={showToast} />}
         </div>
@@ -677,10 +774,8 @@ const EmployeePortal = ({ currentUser, showToast }) => {
 
   // Load idea into edit mode
   const handleEditIdea = (idea) => {
-    // Find the original form template to get field definitions
-    // If form template deleted, this might break, but assume stability for now.
     const matchingForm = forms.find(f => f.title === idea.formTitle && f.category === idea.category) || 
-                         forms.find(f => f.title === idea.formTitle); // Fallback
+                         forms.find(f => f.title === idea.formTitle); 
     
     if (matchingForm) {
       setActiveForm(matchingForm);
@@ -693,8 +788,20 @@ const EmployeePortal = ({ currentUser, showToast }) => {
     }
   };
 
+  const handleDeleteIdea = async (id) => {
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id));
+    showToast("Idea deleted.");
+  };
+
   const handleFileUpload = useCallback(async (file, label) => {
     if (!file) return;
+    
+    // 5MB Limit
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("File is too large. Max size is 5MB.", "error");
+      return;
+    }
+
     setUploading(true);
     
     const reader = new FileReader();
@@ -737,25 +844,22 @@ const EmployeePortal = ({ currentUser, showToast }) => {
     const ideaData = {
       employeeId: currentUser.id,
       employeeName: currentUser.name,
-      status: STATUS.PENDING, // Reset status to Pending on edit? Usually yes for re-review.
+      status: STATUS.PENDING, 
       formTitle: activeForm.title,
-      category: activeForm.category, // Ensure category is saved
+      category: activeForm.category, 
       formData: submission,
       mainDepartment: targetDept,
       subDepartments: subDepts,
       submittedAt: new Date().toISOString(),
-      // Preserve comments if editing
     };
 
     if (editingIdeaId) {
-      // Update existing
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, editingIdeaId), ideaData);
       showToast("Proposal Updated Successfully");
     } else {
-      // Create new
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), {
         ...ideaData,
-        comments: [] // Init comments only on create
+        comments: [] 
       });
       showToast("Proposal Submitted Successfully");
     }
@@ -766,7 +870,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
   const handleComment = useCallback(async (id, text) => {
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
       comments: arrayUnion({ 
-        id: Date.now(), // Add ID for editing support
+        id: Date.now(), 
         author: currentUser.name, 
         text, 
         date: new Date().toISOString() 
@@ -826,24 +930,25 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                       value={submission[f.label] || ''}
                       onChange={e => setSubmission({...submission, [f.label]: e.target.value})} 
                     />
-                  ) : f.type === 'file' ? (
+                  ) : (f.type === 'file' || f.type === 'image') ? (
                      <div className="bg-slate-50 border border-slate-200 p-4 rounded-sm">
                         <div className="flex items-center gap-4">
                            <label className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-sm cursor-pointer hover:bg-slate-700 transition-colors">
                               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                              <span>{uploading ? "Uploading to Drive..." : "Select File"}</span>
+                              <span>{uploading ? "Uploading..." : "Select File"}</span>
                               <input 
                                 type="file" 
                                 className="hidden" 
+                                accept={f.type === 'image' ? "image/*" : "*/*"}
                                 onChange={(e) => handleFileUpload(e.target.files[0], f.label)}
                                 disabled={uploading}
                               />
                            </label>
                            {submission[f.label] ? (
                              <div className="flex items-center gap-2 text-emerald-600 text-sm font-medium">
-                               <FileCheck className="w-4 h-4" /> Uploaded to Drive
+                               <FileCheck className="w-4 h-4" /> Uploaded
                              </div>
-                           ) : <span className="text-xs text-slate-400">Supported formats: PDF, IMG, DOC</span>}
+                           ) : <span className="text-xs text-slate-400">Format: {f.type === 'image' ? 'Images only' : 'Any Document'}</span>}
                         </div>
                         {submission[f.label] && (
                           <input type="hidden" value={submission[f.label]} required={f.required} />
@@ -905,6 +1010,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                 onComment={handleComment} 
                 onUpdateComment={handleUpdateComment}
                 onEditIdea={handleEditIdea}
+                onDeleteIdea={idea.status === STATUS.PENDING || idea.status === STATUS.REJECTED ? handleDeleteIdea : null}
                 currentUser={currentUser}
              />
            ))}
@@ -914,78 +1020,137 @@ const EmployeePortal = ({ currentUser, showToast }) => {
   );
 };
 
-const ManagerPortal = ({ currentUser, showToast }) => {
-  const [ideas, setIdeas] = useState([]);
-  const [filter, setFilter] = useState('all');
+const GuestAuth = ({ onAccess }) => {
+  const [email, setEmail] = useState('');
+  const [status, setStatus] = useState('init'); // init, pending, approved
 
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), s => {
-      setIdeas(s.docs.map(d => ({id:d.id, ...d.data()})));
-    });
-    return () => unsub();
-  }, []);
+  const checkAccess = async (e) => {
+    e.preventDefault();
+    // Check if guest exists
+    const q = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS), where('email', '==', email));
+    const snap = await getDocs(q);
 
-  const handleStatus = useCallback(async (id, status) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
-      status, reviewedBy: currentUser.name, reviewedAt: new Date().toISOString()
-    });
-    showToast(`Proposal status updated: ${status}`);
-  }, [currentUser, showToast]);
+    if (snap.empty) {
+      // Request Access
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS), { 
+        email, status: STATUS.PENDING, requestedAt: new Date().toISOString() 
+      });
+      setStatus('pending');
+    } else {
+      const guest = snap.docs[0].data();
+      if (guest.status === STATUS.APPROVED) {
+        onAccess(email);
+      } else {
+        setStatus('pending');
+      }
+    }
+  };
 
-  const handleComment = useCallback(async (id, text) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
-      comments: arrayUnion({ 
-        id: Date.now(), 
-        author: currentUser.name, 
-        text, 
-        date: new Date().toISOString() 
-      })
-    });
-    showToast("Feedback recorded");
-  }, [currentUser, showToast]);
-
-  const handleUpdateComment = useCallback(async (ideaId, updatedComments) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, ideaId), {
-      comments: updatedComments
-    });
-    showToast("Comment updated");
-  }, [showToast]);
-
-  const myDeptIdeas = useMemo(() => ideas.filter(i => i.mainDepartment === currentUser.department), [ideas, currentUser]);
-  const otherIdeas = useMemo(() => ideas.filter(i => i.mainDepartment !== currentUser.department), [ideas, currentUser]);
-  const displayedIdeas = useMemo(() => filter === 'myDept' ? myDeptIdeas : [...myDeptIdeas, ...otherIdeas], [filter, myDeptIdeas, otherIdeas]);
+  if (status === 'pending') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+        <Card className="w-full max-w-md p-8 text-center">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Lock className="w-8 h-8 text-amber-600" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Access Pending</h2>
+          <p className="text-slate-500 mb-6">Your request has been sent to the administrator. Please wait for approval.</p>
+          <Button variant="secondary" onClick={() => window.location.reload()}>Check Again</Button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900">Executive Overview</h2>
-          <p className="text-slate-500">Review and approve operational proposals.</p>
-        </div>
-        <div className="flex bg-white rounded-sm shadow-sm border border-slate-200 p-1">
-          <button onClick={() => setFilter('all')} className={`px-6 py-2 text-sm rounded-sm font-semibold transition-all ${filter === 'all' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-900'}`}>Global View</button>
-          <button onClick={() => setFilter('myDept')} className={`px-6 py-2 text-sm rounded-sm font-semibold transition-all ${filter === 'myDept' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-900'}`}>My Department</button>
-        </div>
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
+      <Card className="w-full max-w-md p-8">
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">Secure Report Access</h2>
+        <p className="text-slate-500 mb-6">Please enter your email to view this confidential report.</p>
+        <form onSubmit={checkAccess} className="space-y-4">
+          <Input label="Email Address" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+          <Button variant="primary" type="submit" className="w-full h-12">View Report</Button>
+        </form>
+      </Card>
+    </div>
+  );
+};
 
-      <div className="space-y-4">
-        {displayedIdeas.map(idea => (
-          <IdeaCard 
-            key={idea.id} 
-            idea={idea} 
-            isManager={true} 
-            canApprove={idea.mainDepartment === currentUser.department} 
-            onStatus={handleStatus} 
-            onComment={handleComment} 
-            onUpdateComment={handleUpdateComment}
-            currentUser={currentUser}
-          />
-        ))}
-        {displayedIdeas.length === 0 && (
-          <div className="p-12 text-center border-2 border-dashed border-slate-300 rounded-sm">
-             <div className="text-slate-400 font-medium">No pending proposals found in this view.</div>
+const GuestView = ({ ideaId }) => {
+  const [idea, setIdea] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchIdea = async () => {
+      const docRef = doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, ideaId);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        setIdea(snap.data());
+      }
+      setLoading(false);
+    };
+    fetchIdea();
+  }, [ideaId]);
+
+  const isImage = (url) => {
+    return url.match(/\.(jpeg|jpg|gif|png)$/) != null || url.includes('drive.google.com') === false; // Crude check, assuming Script returns direct links mostly
+  };
+
+  const printReport = () => {
+    window.print();
+  };
+
+  if (loading) return <LoadingScreen message="Loading Report..." />;
+  if (!idea) return <div className="text-center p-20 text-slate-500">Report not found or access denied.</div>;
+
+  return (
+    <div className="min-h-screen bg-white font-sans text-slate-900 print:bg-white">
+      <div className="max-w-4xl mx-auto px-6 py-12 print:px-0 print:py-0">
+        <div className="mb-12 border-b border-slate-200 pb-8 print:border-none print:mb-6">
+          <div className="flex justify-between items-start mb-6">
+             <img src="./logo.jpg" alt="Logo" className="w-16 h-16 object-cover rounded-sm" />
+             <div className="text-right">
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Confidential Report</div>
+                <div className="text-sm font-medium text-slate-600">{new Date(idea.submittedAt).toLocaleDateString()}</div>
+             </div>
           </div>
-        )}
+          <h1 className="text-4xl font-extrabold text-slate-900 leading-tight mb-4">{idea.formTitle}</h1>
+          <div className="flex items-center gap-4 text-sm text-slate-500 print:hidden">
+            <span className="flex items-center gap-1"><Users className="w-4 h-4" /> {idea.employeeName}</span>
+            <span>•</span>
+            <span className="uppercase tracking-wide font-bold text-xs">{idea.mainDepartment}</span>
+          </div>
+        </div>
+
+        <div className="space-y-12 print:space-y-6">
+          {Object.entries(idea.formData).map(([k, v]) => (
+            <div key={k} className="break-inside-avoid">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">{k}</h3>
+              {v.startsWith('http') ? (
+                 // Check if image or file link
+                 isImage(v) || v.includes('googleusercontent') ? (
+                    <img src={v} alt="Attachment" className="w-full rounded-lg shadow-md border border-slate-100 print:shadow-none" />
+                 ) : (
+                    <a href={v} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-blue-600 hover:underline bg-blue-50 px-4 py-3 rounded-md border border-blue-100 print:hidden">
+                       <Paperclip className="w-5 h-5" /> View Attached Document
+                    </a>
+                 )
+              ) : (
+                 <div className="text-lg leading-relaxed text-slate-800 whitespace-pre-wrap">{v}</div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-16 pt-8 border-t border-slate-200 text-center text-slate-400 text-xs uppercase tracking-widest print:hidden">
+           Generated by Idea Bank System • {new Date().getFullYear()}
+        </div>
+
+        {/* Floating Print Button for Guest */}
+        <div className="fixed bottom-8 right-8 print:hidden">
+          <Button onClick={printReport} className="shadow-xl rounded-full w-14 h-14 flex items-center justify-center p-0">
+            <Printer className="w-6 h-6" />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -994,12 +1159,10 @@ const ManagerPortal = ({ currentUser, showToast }) => {
 const LoginPage = ({ onLogin, onGoRegister }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  // Removed role state and role selection buttons
   const [imgError, setImgError] = useState(false);
 
   return (
     <div className="min-h-screen flex">
-      {/* Left: Brand Side */}
       <div className="hidden lg:flex w-1/2 bg-slate-900 relative flex-col justify-between p-12 text-white">
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1516937941348-c09645f3a2eb?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-10 mix-blend-overlay"></div>
         <div className="relative z-10">
@@ -1023,7 +1186,6 @@ const LoginPage = ({ onLogin, onGoRegister }) => {
         </div>
       </div>
 
-      {/* Right: Login Form */}
       <div className="w-full lg:w-1/2 bg-white flex items-center justify-center p-8">
         <div className="w-full max-w-md">
           <div className="mb-10 lg:hidden text-center">
@@ -1083,7 +1245,7 @@ const RegisterPage = ({ onRegister, onBack }) => {
   );
 };
 
-// --- Main App Component (Moved to Bottom to fix ReferenceError) ---
+// --- Main App Component ---
 
 export default function IdeaBankApp() {
   const [authUser, setAuthUser] = useState(null);
@@ -1091,18 +1253,55 @@ export default function IdeaBankApp() {
   const [view, setView] = useState('login'); 
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
-  const [imgError, setImgError] = useState(false);
+  const [sharedIdeaId, setSharedIdeaId] = useState(null);
 
   useEffect(() => {
-    const initAuth = async () => {
-      await signInAnonymously(auth);
+    const restoreSession = async () => {
+      // Check for shared link in URL
+      const params = new URLSearchParams(window.location.search);
+      const shareId = params.get('share');
+      if (shareId) {
+        setSharedIdeaId(shareId);
+        setView('guest_auth');
+        setLoading(false);
+        return;
+      }
+
+      // Normal Auth Flow
+      const authPromise = new Promise((resolve) => {
+        const unsub = onAuthStateChanged(auth, (user) => {
+          if (user) resolve(user);
+          else signInAnonymously(auth).then((result) => resolve(result.user));
+        });
+      });
+
+      await authPromise;
+      setAuthUser(auth.currentUser);
+
+      const storedUid = localStorage.getItem('ideabank_uid');
+      if (storedUid) {
+        if (storedUid === 'admin-master') {
+           setCurrentUser({ ...DEFAULT_ADMIN, id: 'admin-master' });
+           setView(ROLES.ADMIN);
+        } else {
+           try {
+             const userSnap = await getDocs(query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS), where('__name__', '==', storedUid))); 
+             
+             if (!userSnap.empty) {
+                const userData = { id: userSnap.docs[0].id, ...userSnap.docs[0].data() };
+                setCurrentUser(userData);
+                setView(userData.role);
+             }
+           } catch (e) {
+             console.error("Session restore failed", e);
+             localStorage.removeItem('ideabank_uid');
+           }
+        }
+      }
+      setLoading(false);
     };
-    initAuth();
-    
-    return onAuthStateChanged(auth, (user) => {
-      setAuthUser(user);
-      if (!user) setLoading(false);
-    });
+
+    restoreSession();
   }, []);
 
   const showToast = useCallback((message, type = 'success') => {
@@ -1114,8 +1313,10 @@ export default function IdeaBankApp() {
     setLoading(true);
     try {
       if (email === DEFAULT_ADMIN.email && password === DEFAULT_ADMIN.password) {
-        setCurrentUser({ ...DEFAULT_ADMIN, id: 'admin-master' });
-        setView(ROLES.ADMIN); // Automatically route admin
+        const adminUser = { ...DEFAULT_ADMIN, id: 'admin-master' };
+        setCurrentUser(adminUser);
+        setView(ROLES.ADMIN); 
+        localStorage.setItem('ideabank_uid', 'admin-master'); 
         setLoading(false);
         return;
       }
@@ -1134,15 +1335,21 @@ export default function IdeaBankApp() {
 
       if (userData.status !== STATUS.APPROVED) throw new Error("Account pending approval.");
       
-      // Auto-route based on role
       setCurrentUser(userData);
       setView(userData.role);
+      localStorage.setItem('ideabank_uid', userData.id);
 
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null); 
+    setView('login');
+    localStorage.removeItem('ideabank_uid');
   };
 
   const handleRegister = async (data) => {
@@ -1160,7 +1367,11 @@ export default function IdeaBankApp() {
     }
   };
 
-  if (!authUser && loading) return <LoadingScreen message="Initializing Secure Connection" />;
+  if (loading) return <LoadingScreen message="Loading System..." />;
+
+  // Special Routes
+  if (view === 'guest_auth') return <GuestAuth onAccess={() => setView('guest_view')} />;
+  if (view === 'guest_view') return <GuestView ideaId={sharedIdeaId} />;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-slate-200">
@@ -1181,7 +1392,6 @@ export default function IdeaBankApp() {
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-3">
                   <div className="bg-white p-0.5 rounded-sm">
-                    {/* Fixed Path & Size */}
                     <img 
                       src="./logo.jpg" 
                       alt="Logo" 
@@ -1205,7 +1415,7 @@ export default function IdeaBankApp() {
                   <div className="text-sm font-medium text-white">{currentUser.name}</div>
                   <div className="text-xs text-slate-400">{currentUser.department || 'System Admin'}</div>
                 </div>
-                <Button variant="ghost" onClick={() => { setCurrentUser(null); setView('login'); }} className="text-slate-400 hover:text-white hover:bg-slate-800">
+                <Button variant="ghost" onClick={handleLogout} className="text-slate-400 hover:text-white hover:bg-slate-800">
                   <LogOut className="w-5 h-5" />
                 </Button>
               </div>
