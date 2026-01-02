@@ -10,8 +10,8 @@ import {
 import { 
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
-  UserPlus, Layout, Filter, ChevronDown, ChevronUp, Send, 
-  Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, FileDown, Sparkles, BrainCircuit, Rocket, ArrowLeft, Target, Award, MoreHorizontal, BarChart3, WifiOff, ChevronLeft, ChevronRight, AlertCircle
+  UserPlus, Layout, ChevronDown, ChevronUp, Send, 
+  Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, FileDown, Sparkles, BrainCircuit, Rocket, ArrowLeft, Target, Award, BarChart3, WifiOff, ChevronLeft, ChevronRight, AlertCircle, Handshake, ShieldAlert, Copy, Link as LinkIcon, Droplet, Flame, Gauge, HardHat, Activity, Factory
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -67,32 +67,33 @@ const STATUS = {
   REJECTED: 'rejected'
 };
 
+// Oil & Gas Specific Form Fields
 const DEFAULT_FORM_FIELDS = [
-  { label: "Idea Title", type: "text", required: true },
-  { label: "Idea Description", type: "textarea", required: true },
-  { label: "Category / Area", type: "dropdown", options: ["Operations", "Safety", "Cost Reduction", "Innovation", "HR", "IT", "Maintenance"], required: true },
-  { label: "Benefits / Value Proposition", type: "textarea", required: true },
-  { label: "Estimated Cost", type: "text", required: false },
-  { label: "Implementation Feasibility", type: "dropdown", options: ["Easy (Quick Win)", "Moderate (Project)", "Complex (Strategic)"], required: true },
-  { label: "Priority Level", type: "dropdown", options: ["Low", "Medium", "High", "Critical"], required: false },
-  { label: "Expected Timeline", type: "dropdown", options: ["Short-term (< 3 mo)", "Medium-term (3-12 mo)", "Long-term (> 1 yr)"], required: false },
-  { label: "Collaboration Needed?", type: "dropdown", options: ["Yes", "No"], required: false },
-  { label: "Attachments / Supporting Docs", type: "file", required: false }
+  { label: "Initiative Title", type: "text", required: true },
+  { label: "Operational Area", type: "dropdown", options: ["Upstream - Exploration", "Upstream - Drilling", "Midstream - Pipelines", "Downstream - Refining", "HSE & Sustainability", "Asset Integrity", "Digital Transformation"], required: true },
+  { label: "Target Asset / Rig", type: "text", required: true, placeholder: "e.g., Platform Alpha, Refinery Unit 4" },
+  { label: "Problem Statement", type: "textarea", required: true },
+  { label: "Proposed Solution", type: "textarea", required: true },
+  { label: "HSE Impact", type: "dropdown", options: ["Positive (Safety Enhancement)", "Neutral", "Requires Risk Assessment"], required: true },
+  { label: "Est. CAPEX (USD)", type: "text", required: false },
+  { label: "Est. OPEX Savings (USD/Year)", type: "text", required: false },
+  { label: "Implementation Timeline", type: "dropdown", options: ["Immediate (<1 mo)", "Short Term (1-6 mo)", "Long Term (>6 mo)"], required: true },
+  { label: "Technical Attachments (P&ID, Isometrics)", type: "file", required: false }
 ];
 
 const DEFAULT_KPIS = [
-  { label: "Impact on Business Goals", description: "Does it reduce cost, increase revenue, or improve safety?", weight: 30 },
-  { label: "Feasibility", description: "How easy is it to implement?", weight: 20 },
-  { label: "Cost vs. Benefit Ratio", description: "Estimated cost compared to expected benefits.", weight: 20 },
-  { label: "Innovation Level", description: "Is it a new approach or incremental improvement?", weight: 15 },
-  { label: "Risk Level", description: "Does it introduce operational or safety risks?", weight: 15 }
+  { label: "HSE Compliance & Safety", description: "Does this improve personnel safety or environmental protection?", weight: 30 },
+  { label: "Production Efficiency", description: "Impact on barrels/day or uptime.", weight: 25 },
+  { label: "Cost Optimization", description: "Reduction in OPEX or CAPEX efficiency.", weight: 25 },
+  { label: "Technical Feasibility", description: "Complexity of implementation vs current infrastructure.", weight: 20 }
 ];
 
 const DEFAULT_ADMIN = {
-  email: 'admin@ideabank.com',
+  email: 'admin@eprom.com',
   password: 'admin123', 
   role: ROLES.ADMIN,
   name: 'System Admin',
+  department: 'Corporate IT',
   status: STATUS.APPROVED
 };
 
@@ -112,7 +113,54 @@ const callGemini = async (prompt) => {
     return data.candidates?.[0]?.content?.parts?.[0]?.text || "Could not generate response.";
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return "AI Service Unavailable. Please try again later.";
+    return null;
+  }
+};
+
+const checkDuplicates = async (newTitle, newDesc, category) => {
+  try {
+    const q = query(
+      collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS),
+      where('category', '==', category),
+    );
+    const snap = await getDocs(q);
+    
+    if (snap.empty) return null;
+
+    const existingIdeas = snap.docs.slice(0, 20).map(d => ({
+      id: d.id,
+      title: d.data().formTitle,
+      desc: JSON.stringify(d.data().formData).substring(0, 300)
+    }));
+
+    const prompt = `
+      You are an AI auditor for an Oil & Gas Innovation Database. Analyze if the NEW_PROPOSAL is a duplicate or heavily overlaps with any EXISTING_PROPOSALS.
+      
+      NEW_PROPOSAL:
+      Title: ${newTitle}
+      Content: ${newDesc.substring(0, 500)}
+
+      EXISTING_PROPOSALS:
+      ${JSON.stringify(existingIdeas)}
+
+      Return a raw JSON object (no markdown) with this schema:
+      {
+        "isDuplicate": boolean,
+        "matchId": "string (ID of matched idea or null)",
+        "matchTitle": "string (Title of matched idea or null)",
+        "reason": "string (Technical explanation for the Asset Manager)"
+      }
+    `;
+
+    const jsonString = await callGemini(prompt);
+    if (!jsonString) return null;
+    
+    const cleanJson = jsonString.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleanJson);
+
+  } catch (e) {
+    console.error("Duplicate check failed", e);
+    return null;
   }
 };
 
@@ -129,33 +177,30 @@ const getDirectLink = (url) => {
 
 const generatePDF = (idea, analysisText = '') => {
   if (!window.html2pdf) {
-    alert("PDF Generator is loading... please try again in 5 seconds.");
+    alert("System initializing... please try again in 5 seconds.");
     return;
   }
 
   const element = document.createElement('div');
   
-  // Evaluation HTML
   let evaluationHtml = '';
   if (idea.rating) {
     evaluationHtml = `
-      <div style="margin-top: 30px; margin-bottom: 30px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 20px; background-color: #f8fafc;">
-        <h3 style="font-size: 16px; font-weight: bold; color: #1e293b; margin-top: 0; margin-bottom: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px;">Manager Evaluation</h3>
+      <div style="margin-top: 30px; margin-bottom: 30px; border: 1px solid #94a3b8; border-radius: 4px; padding: 20px; background-color: #f1f5f9;">
+        <h3 style="font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 0; margin-bottom: 15px; border-bottom: 2px solid #334155; padding-bottom: 5px; text-transform: uppercase;">Technical Evaluation</h3>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-           <span style="font-size: 20px; font-weight: bold; color: #0f172a;">Grade: ${idea.rating.grade}</span>
-           <span style="font-size: 16px; color: #64748b;">Score: ${idea.rating.percentage}%</span>
+           <span style="font-size: 18px; font-weight: bold; color: #0f172a;">Grade: ${idea.rating.grade}</span>
+           <span style="font-size: 14px; color: #475569;">Feasibility Score: ${idea.rating.percentage}%</span>
         </div>
-        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
           <tr style="background-color: #e2e8f0; text-align: left;">
-            <th style="padding: 10px; border: 1px solid #cbd5e1;">KPI</th>
-            <th style="padding: 10px; border: 1px solid #cbd5e1;">Weight</th>
-            <th style="padding: 10px; border: 1px solid #cbd5e1;">Score (1-5)</th>
+            <th style="padding: 8px; border: 1px solid #cbd5e1;">KPI Criteria</th>
+            <th style="padding: 8px; border: 1px solid #cbd5e1;">Rating (1-5)</th>
           </tr>
           ${idea.rating.details.map(kpi => `
             <tr>
-              <td style="padding: 10px; border: 1px solid #cbd5e1;">${kpi.label}</td>
-              <td style="padding: 10px; border: 1px solid #cbd5e1;">${kpi.weight}%</td>
-              <td style="padding: 10px; border: 1px solid #cbd5e1;">${kpi.score}</td>
+              <td style="padding: 8px; border: 1px solid #cbd5e1;">${kpi.label}</td>
+              <td style="padding: 8px; border: 1px solid #cbd5e1;">${kpi.score}</td>
             </tr>
           `).join('')}
         </table>
@@ -164,31 +209,32 @@ const generatePDF = (idea, analysisText = '') => {
   }
 
   const analysisHtml = analysisText ? `
-    <div style="background-color: #f0fdf4; padding: 20px; border-radius: 6px; border: 1px solid #bbf7d0; margin-bottom: 30px;">
-      <h3 style="font-size: 16px; font-weight: bold; color: #166534; margin-top: 0; margin-bottom: 10px;">AI Executive Summary</h3>
-      <div style="font-size: 14px; line-height: 1.6; color: #14532d; white-space: pre-wrap;">${analysisText}</div>
+    <div style="background-color: #f0fdf4; padding: 15px; border-radius: 4px; border-left: 4px solid #15803d; margin-bottom: 30px;">
+      <h3 style="font-size: 14px; font-weight: bold; color: #14532d; margin-top: 0; margin-bottom: 8px; text-transform: uppercase;">AI Executive Summary</h3>
+      <div style="font-size: 12px; line-height: 1.6; color: #14532d; white-space: pre-wrap; font-family: 'Courier New', Courier, monospace;">${analysisText}</div>
     </div>
   ` : '';
 
   element.innerHTML = `
-    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto;">
-      <div style="border-bottom: 2px solid #1e293b; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center;">
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b; max-width: 800px; margin: 0 auto;">
+      <div style="border-bottom: 4px solid #0f172a; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end;">
         <div>
-          <h1 style="font-size: 28px; font-weight: bold; margin: 0; color: #1e293b; text-transform: uppercase;">Idea Bank Report</h1>
-          <p style="margin: 5px 0 0; color: #64748b; font-size: 12px;">CONFIDENTIAL INTERNAL DOCUMENT</p>
+          <h1 style="font-size: 24px; font-weight: 900; margin: 0; color: #0f172a; text-transform: uppercase; letter-spacing: -0.5px;">Operational Improvement Proposal</h1>
+          <p style="margin: 5px 0 0; color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: 1px;">Internal Document • Confidential • EPROM</p>
         </div>
         <div style="text-align: right;">
-          <p style="margin: 0; font-size: 12px; color: #64748b;">Ref: #${idea.id.slice(0, 8)}</p>
-          <p style="margin: 0; font-size: 12px; color: #64748b;">Date: ${new Date().toLocaleDateString()}</p>
+          <p style="margin: 0; font-size: 11px; color: #64748b; font-family: monospace;">ID: ${idea.id.slice(0, 8).toUpperCase()}</p>
+          <p style="margin: 0; font-size: 11px; color: #64748b;">${new Date().toLocaleDateString()}</p>
         </div>
       </div>
-
-      <div style="background-color: #f8fafc; padding: 20px; border-radius: 4px; margin-bottom: 30px;">
-        <h2 style="font-size: 24px; font-weight: bold; color: #0f172a; margin-top: 0;">${idea.formTitle}</h2>
-        <div style="display: flex; gap: 20px; margin-top: 10px; font-size: 14px;">
-          <p><strong>Submitted By:</strong> ${idea.employeeName}</p>
-          <p><strong>Department:</strong> ${idea.mainDepartment}</p>
-          <p><strong>Date:</strong> ${new Date(idea.submittedAt).toLocaleDateString()}</p>
+      
+      <div style="background-color: #f8fafc; padding: 20px; border: 1px solid #e2e8f0; margin-bottom: 30px;">
+        <h2 style="font-size: 20px; font-weight: bold; color: #0f172a; margin-top: 0;">${idea.formTitle}</h2>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; font-size: 12px;">
+          <div><span style="color:#64748b; text-transform:uppercase; font-size:10px; font-weight:bold;">Proposer</span><br/>${idea.employeeName}</div>
+          <div><span style="color:#64748b; text-transform:uppercase; font-size:10px; font-weight:bold;">Department</span><br/>${idea.mainDepartment}</div>
+          <div><span style="color:#64748b; text-transform:uppercase; font-size:10px; font-weight:bold;">Category</span><br/>${idea.category}</div>
+          <div><span style="color:#64748b; text-transform:uppercase; font-size:10px; font-weight:bold;">Submission Date</span><br/>${new Date(idea.submittedAt).toLocaleDateString()}</div>
         </div>
       </div>
 
@@ -196,71 +242,23 @@ const generatePDF = (idea, analysisText = '') => {
       ${evaluationHtml}
 
       <div style="margin-bottom: 30px;">
-        ${Object.entries(idea.formData).map(([k, v]) => {
-          let valStr = '';
-          if (Array.isArray(v)) {
-            valStr = v.join(', ');
-          } else {
-            valStr = v ? v.toString() : '';
-          }
-          
-          const isUrl = valStr.startsWith('http');
-          const isLikelyImage = isUrl && (valStr.match(/\.(jpeg|jpg|gif|png)$/i) || valStr.includes('googleusercontent') || valStr.includes('drive.google.com'));
-          
-          let contentHtml = '';
-          
-          if (isUrl) {
-             contentHtml = `
-               <div style="margin-bottom: 10px;">
-                 <a href="${valStr}" target="_blank" style="color: #2563eb; text-decoration: underline; font-size: 14px; word-break: break-all; display: inline-flex; align-items: center;">
-                   View Attachment / Link 🔗
-                 </a>
-               </div>
-             `;
-             
-             if (isLikelyImage) {
-                const imgSrc = getDirectLink(valStr);
-                contentHtml += `
-                  <img src="${imgSrc}" style="max-width: 100%; max-height: 400px; border-radius: 4px; border: 1px solid #e2e8f0; display: block; margin: 10px 0;" crossorigin="anonymous" onerror="this.style.display='none'" />
-                `;
-             }
-          } else {
-             contentHtml = `<div style="font-size: 16px; line-height: 1.6; color: #334155; white-space: pre-wrap;">${valStr}</div>`;
-          }
-
-          return `
-            <div style="margin-bottom: 25px; page-break-inside: avoid;">
-              <h3 style="font-size: 14px; font-weight: bold; color: #475569; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">${k}</h3>
-              ${contentHtml}
+        ${Object.entries(idea.formData).map(([k, v]) => `
+            <div style="margin-bottom: 20px; page-break-inside: avoid;">
+              <h3 style="font-size: 11px; font-weight: bold; color: #475569; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid #cbd5e1; padding-bottom: 2px;">${k}</h3>
+              <div style="font-size: 13px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${Array.isArray(v) ? v.join(', ') : v}</div>
             </div>
-          `;
-        }).join('')}
+          `).join('')}
       </div>
-
-      <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
-        <h3 style="font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 15px;">Executive Feedback & Approval Status</h3>
-        <div style="margin-bottom: 20px;">
-           <span style="background-color: ${idea.status === 'approved' ? '#dcfce7' : '#f1f5f9'}; color: ${idea.status === 'approved' ? '#166534' : '#475569'}; padding: 5px 10px; border-radius: 4px; font-weight: bold; text-transform: uppercase; font-size: 12px;">
-             Current Status: ${idea.status}
-           </span>
-        </div>
-        ${idea.comments && idea.comments.length > 0 ? idea.comments.map(c => `
-          <div style="background-color: #fff; padding: 10px; border-left: 3px solid #cbd5e1; margin-bottom: 10px; font-size: 13px;">
-            <p style="margin: 0 0 5px;"><strong>${c.author}</strong> <span style="color: #94a3b8;">${new Date(c.date).toLocaleDateString()}</span></p>
-            <p style="margin: 0; color: #334155;">${c.text}</p>
-          </div>
-        `).join('') : '<p style="font-size: 13px; color: #94a3b8;">No comments recorded.</p>'}
-      </div>
-
-      <div style="margin-top: 50px; text-align: center; font-size: 10px; color: #cbd5e1;">
-        Generated by Idea Bank • EPROM Enterprise Solutions
+      
+      <div style="margin-top: 50px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+        Generated by EPROM Operational Excellence Portal • ISO 9001 Compliant Process
       </div>
     </div>
   `;
 
   const opt = {
     margin: 0.5,
-    filename: `Report-${idea.formTitle.replace(/\s+/g, '-')}.pdf`,
+    filename: `EPROM-Proposal-${idea.formTitle.replace(/\s+/g, '-')}.pdf`,
     image: { type: 'jpeg', quality: 0.98 },
     html2canvas: { scale: 2, useCORS: true },
     jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
@@ -269,98 +267,56 @@ const generatePDF = (idea, analysisText = '') => {
   window.html2pdf().set(opt).from(element).save();
 };
 
-// --- Helper Components (Primitives) ---
+// --- UI Components ---
 
-const LoadingScreen = ({ message = "Loading...", onRetry }) => (
+const LoadingScreen = ({ message = "Initializing System...", onRetry }) => (
   <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
-    <div className="w-8 h-8 border-4 border-slate-600 border-t-white rounded-full animate-spin mb-4"></div>
-    <div className="text-sm font-medium tracking-widest uppercase mb-4">{message}</div>
-    {onRetry && (
-      <button 
-        onClick={onRetry} 
-        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-xs uppercase tracking-wide transition-colors flex items-center gap-2"
-      >
-        <WifiOff className="w-4 h-4" /> Retry Connection
-      </button>
-    )}
+    <div className="relative">
+      <div className="w-12 h-12 border-4 border-slate-700 border-t-sky-500 rounded-full animate-spin mb-4"></div>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <Droplet className="w-4 h-4 text-sky-500" />
+      </div>
+    </div>
+    <div className="text-xs font-bold tracking-widest uppercase text-slate-400 mb-4">{message}</div>
+    {onRetry && <button onClick={onRetry} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-xs transition-colors">Retry Connection</button>}
   </div>
 );
 
 const Button = ({ children, onClick, variant = 'primary', className = '', type = 'button', disabled = false, title }) => {
-  const baseStyle = "px-4 py-2 text-sm font-medium tracking-wide transition-all duration-200 flex items-center justify-center gap-2 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 active:scale-[0.98]";
-  
+  const baseStyle = "px-4 py-2 text-xs font-bold tracking-wide uppercase transition-all duration-200 flex items-center justify-center gap-2 rounded-sm focus:outline-none focus:ring-2 focus:ring-offset-1 active:scale-[0.98]";
   const variants = {
-    primary: "bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-900 disabled:bg-slate-300 disabled:cursor-not-allowed shadow-sm hover:shadow-md",
-    secondary: "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-slate-500 disabled:bg-slate-50 shadow-sm",
-    danger: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-600 disabled:bg-red-300 shadow-sm hover:shadow-red-200",
-    success: "bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-600 disabled:bg-emerald-300 shadow-sm hover:shadow-emerald-200",
-    ai: "bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700 focus:ring-indigo-500 shadow-sm hover:shadow-indigo-200",
+    primary: "bg-sky-800 text-white hover:bg-sky-700 disabled:bg-slate-300 border border-transparent shadow-sm",
+    secondary: "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 hover:text-sky-800",
+    danger: "bg-red-700 text-white hover:bg-red-600 disabled:bg-red-300 shadow-sm",
+    success: "bg-emerald-700 text-white hover:bg-emerald-600 disabled:bg-emerald-300 shadow-sm",
+    ai: "bg-gradient-to-r from-indigo-900 to-sky-900 text-white hover:from-indigo-800 hover:to-sky-800 shadow-md border border-indigo-700",
     ghost: "bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900"
   };
-
-  return (
-    <button type={type} onClick={onClick} className={`${baseStyle} ${variants[variant]} ${className}`} disabled={disabled} title={title}>
-      {children}
-    </button>
-  );
+  return <button type={type} onClick={onClick} className={`${baseStyle} ${variants[variant]} ${className}`} disabled={disabled} title={title}>{children}</button>;
 };
 
 const Input = ({ label, type = "text", value, onChange, placeholder, required = false }) => (
   <div className="mb-5 group">
-    {label && (
-      <label className="block text-sm font-semibold text-slate-700 mb-2 group-focus-within:text-indigo-600 transition-colors">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-    )}
-    <input
-      type={type}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 text-sm rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all placeholder-slate-400 hover:border-slate-300"
-      required={required}
-    />
+    {label && <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">{label} {required && <span className="text-amber-600">*</span>}</label>}
+    <input type={type} value={value} onChange={onChange} placeholder={placeholder} className="w-full px-4 py-3 bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-sm focus:outline-none focus:border-sky-600 focus:bg-white focus:ring-1 focus:ring-sky-600 transition-all placeholder-slate-400 font-medium" required={required} />
   </div>
 );
 
 const Card = ({ children, className = '', onClick }) => (
-  <div 
-    onClick={onClick} 
-    className={`bg-white border border-slate-200 shadow-sm rounded-lg ${className} ${onClick ? 'cursor-pointer hover:shadow-lg hover:border-indigo-200 hover:-translate-y-0.5 transition-all duration-300' : ''}`}
-  >
-    {children}
-  </div>
+  <div onClick={onClick} className={`bg-white border border-slate-200 shadow-sm rounded-sm ${className} ${onClick ? 'cursor-pointer hover:border-sky-300 hover:shadow-md transition-all duration-300' : ''}`}>{children}</div>
 );
 
 const Badge = ({ status, isPublic, rating }) => {
   const styles = {
-    [STATUS.PENDING]: "bg-amber-50 text-amber-700 border-amber-200 ring-amber-100",
-    [STATUS.APPROVED]: "bg-emerald-50 text-emerald-700 border-emerald-200 ring-emerald-100",
-    [STATUS.REJECTED]: "bg-red-50 text-red-700 border-red-200 ring-red-100",
+    [STATUS.PENDING]: "bg-amber-50 text-amber-700 border-amber-200",
+    [STATUS.APPROVED]: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    [STATUS.REJECTED]: "bg-red-50 text-red-700 border-red-200",
   };
-  
-  const getGradeColor = (g) => {
-    if(g === 'A') return "bg-emerald-100 text-emerald-800 border-emerald-300";
-    if(g === 'B') return "bg-blue-100 text-blue-800 border-blue-300";
-    if(g === 'C') return "bg-yellow-100 text-yellow-800 border-yellow-300";
-    return "bg-red-100 text-red-800 border-red-300";
-  };
-
   return (
     <div className="flex gap-2 flex-wrap">
-      <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border rounded-full shadow-sm ring-1 ring-offset-0 ${styles[status] || "bg-gray-100"}`}>
-        {status}
-      </span>
-      {rating && (
-        <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border rounded-full flex items-center gap-1 shadow-sm ${getGradeColor(rating.grade)}`}>
-          <Award className="w-3 h-3" /> Grade {rating.grade} ({rating.percentage}%)
-        </span>
-      )}
-      {isPublic && (
-        <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border rounded-full bg-indigo-50 text-indigo-700 border-indigo-200 flex items-center gap-1 shadow-sm">
-          <Globe className="w-3 h-3" /> Public
-        </span>
-      )}
+      <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm ${styles[status]}`}>{status}</span>
+      {rating && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm flex items-center gap-1 bg-slate-100 text-slate-700 border-slate-300"><Award className="w-3 h-3 text-amber-500" /> Grade {rating.grade}</span>}
+      {isPublic && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm bg-sky-50 text-sky-700 border-sky-200 flex items-center gap-1"><Globe className="w-3 h-3" /> Global</span>}
     </div>
   );
 };
@@ -368,156 +324,83 @@ const Badge = ({ status, isPublic, rating }) => {
 const Modal = ({ isOpen, onClose, title, children }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-fade-in overflow-hidden">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-scale-up border border-slate-200">
-        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white/80 backdrop-blur-sm z-10 sticky top-0">
-          <h3 className="text-xl font-bold text-slate-900 tracking-tight">{title}</h3>
-          <button onClick={onClose} className="p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all">
-            <X className="w-5 h-5" />
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-fade-in overflow-hidden">
+      <div className="bg-white rounded-sm shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col animate-scale-up border-t-4 border-t-sky-700">
+        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white z-10 sticky top-0">
+          <div className="flex items-center gap-3">
+             <div className="bg-sky-100 p-2 rounded-sm"><FileText className="w-5 h-5 text-sky-700" /></div>
+             <h3 className="text-xl font-bold text-slate-900 tracking-tight font-sans">{title}</h3>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"><X className="w-5 h-5" /></button>
         </div>
-        <div className="p-8 overflow-y-auto scroll-smooth">
-          {children}
-        </div>
+        <div className="p-8 overflow-y-auto scroll-smooth bg-slate-50/50">{children}</div>
       </div>
     </div>
   );
 };
 
-// --- Innovation Carousel Component ---
+const StatCard = ({ label, value, subtext, icon: Icon, color = "text-sky-600" }) => (
+  <div className="bg-white p-6 rounded-sm border border-slate-200 shadow-sm flex items-start justify-between">
+    <div>
+      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">{label}</div>
+      <div className="text-2xl font-black text-slate-800 tracking-tight">{value}</div>
+      {subtext && <div className="text-xs text-slate-500 mt-1 font-medium">{subtext}</div>}
+    </div>
+    <div className={`p-3 bg-slate-50 rounded-full border border-slate-100 ${color}`}>
+      <Icon className="w-5 h-5" />
+    </div>
+  </div>
+);
 
 const InnovationCarousel = ({ variant = 'full' }) => {
   const [slides, setSlides] = useState([]);
   const [current, setCurrent] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  // Helper to extract first image from formData
-  const getIdeaImage = (idea) => {
-    if (!idea.formData) return null;
-    const found = Object.values(idea.formData).find(v => 
-      typeof v === 'string' && (v.match(/\.(jpeg|jpg|gif|png)$/i) || v.includes('drive.google.com') || v.includes('googleusercontent'))
-    );
-    return found ? getDirectLink(found) : null;
-  };
 
   useEffect(() => {
     const q = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), where('isPublic', '==', true));
     const unsub = onSnapshot(q, (snap) => {
-      const publicIdeas = snap.docs.map(d => ({ 
-        id: d.id, 
-        ...d.data(),
-        displayImage: getIdeaImage(d.data())
-      }));
-      setSlides(publicIdeas);
-      setLoading(false);
+      setSlides(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return () => unsub();
   }, []);
 
   useEffect(() => {
     if (slides.length <= 1) return;
-    const interval = setInterval(() => {
-      setCurrent(c => (c + 1) % slides.length);
-    }, 6000); // 6 seconds per slide
+    const interval = setInterval(() => setCurrent(c => (c + 1) % slides.length), 8000);
     return () => clearInterval(interval);
   }, [slides.length]);
 
-  const next = () => setCurrent(c => (c + 1) % slides.length);
-  const prev = () => setCurrent(c => (c - 1 + slides.length) % slides.length);
-
-  if (loading) return (
-    <div className={`flex items-center justify-center bg-slate-900 ${variant === 'full' ? 'h-full' : 'h-48'}`}>
-      <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-    </div>
-  );
-
   if (slides.length === 0) return (
-    <div className={`relative overflow-hidden bg-slate-900 flex flex-col items-center justify-center text-center p-8 ${variant === 'full' ? 'h-full' : 'h-48 rounded-lg'}`}>
-      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
-      <Sparkles className="w-10 h-10 text-indigo-500 mb-4" />
-      <h3 className="text-xl font-bold text-white mb-2">Innovation Awaits</h3>
-      <p className="text-slate-400 max-w-sm">No public ideas yet. Be the first to publish an EPROM innovation.</p>
+    <div className={`bg-slate-900 flex flex-col items-center justify-center text-center p-8 ${variant === 'full' ? 'h-full' : 'h-48 rounded-sm'} relative overflow-hidden`}>
+      <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
+      <Factory className="w-12 h-12 text-sky-600 mb-4 relative z-10" />
+      <h3 className="text-xl font-bold text-white mb-2 relative z-10">Operational Excellence</h3>
+      <p className="text-slate-400 max-w-sm text-sm relative z-10">Driving efficiency and safety through innovation.</p>
     </div>
   );
 
   const slide = slides[current];
-
   return (
-    <div className={`relative overflow-hidden group bg-slate-900 ${variant === 'full' ? 'h-full' : 'h-64 rounded-xl shadow-lg border border-slate-800'}`}>
-      {/* Background Image/Gradient */}
-      <div className="absolute inset-0 transition-all duration-700 ease-in-out">
-        {slide.displayImage ? (
-          <img 
-            src={slide.displayImage} 
-            alt="Idea Background" 
-            className="w-full h-full object-cover opacity-30 mix-blend-overlay transition-transform duration-[10s] ease-linear scale-110 group-hover:scale-100" 
-          />
-        ) : (
-          <div className={`w-full h-full bg-gradient-to-br ${current % 2 === 0 ? 'from-indigo-900 to-slate-900' : 'from-slate-900 to-violet-900'} opacity-50`} />
-        )}
-        {/* Gradient Overlay for Text Readability */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/80 to-transparent" />
-      </div>
-
-      {/* Content */}
-      <div className={`absolute bottom-0 left-0 right-0 p-8 md:p-12 flex flex-col items-start z-10 transition-opacity duration-500`}>
-        <div className="flex items-center gap-3 mb-3">
-          <span className="bg-indigo-600 text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider shadow-sm">
-            {slide.category || 'Innovation'}
-          </span>
-          {slide.rating && (
-            <span className="flex items-center gap-1 text-xs font-bold text-emerald-400 bg-emerald-900/30 px-2 py-1 rounded border border-emerald-800">
-              <Award className="w-3 h-3" /> Grade {slide.rating.grade}
-            </span>
-          )}
+    <div className={`relative overflow-hidden group bg-slate-900 ${variant === 'full' ? 'h-full' : 'h-64 rounded-sm shadow-lg border-b-4 border-sky-600'}`}>
+      {/* Industrial Background Effect */}
+      <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-sky-900 via-slate-900 to-black"></div>
+      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-5"></div>
+      
+      <div className="absolute bottom-0 left-0 right-0 p-8 z-10 bg-gradient-to-t from-black/90 via-black/50 to-transparent">
+        <div className="flex items-center gap-2 mb-3">
+           <span className="bg-sky-700 text-white text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-widest inline-block">{slide.category}</span>
+           <span className="text-slate-400 text-[10px] uppercase font-bold tracking-widest flex items-center gap-1"><Activity className="w-3 h-3" /> Active Campaign</span>
         </div>
-        
-        <h2 className={`font-bold text-white leading-tight mb-4 drop-shadow-md ${variant === 'full' ? 'text-3xl md:text-4xl' : 'text-2xl'}`}>
-          {slide.formTitle}
-        </h2>
-        
-        <p className="text-slate-300 text-sm leading-relaxed max-w-xl line-clamp-3 mb-6">
-          {slide.aiSummary || "An innovative proposal driving operational excellence at EPROM."}
-        </p>
-
-        <div className="flex items-center gap-4 text-xs font-medium text-slate-400 border-t border-slate-700/50 pt-4 w-full">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold text-[10px]">
-              {slide.employeeName?.[0]}
-            </div>
-            <span className="text-slate-200">{slide.employeeName}</span>
-          </div>
-          <span>•</span>
-          <span>{new Date(slide.submittedAt).toLocaleDateString()}</span>
+        <h2 className="font-bold text-white leading-tight mb-3 text-2xl font-sans tracking-tight">{slide.formTitle}</h2>
+        <p className="text-slate-300 text-xs leading-relaxed line-clamp-2 mb-4 font-mono max-w-2xl border-l-2 border-sky-500 pl-3">{slide.aiSummary || "An innovative proposal for operational improvement."}</p>
+        <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-wider text-slate-400">
+          <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-white text-[10px]">{slide.employeeName?.[0]}</div>
+          <span>{slide.employeeName}</span>
         </div>
-      </div>
-
-      {/* Controls */}
-      <div className="absolute top-1/2 -translate-y-1/2 left-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button onClick={(e) => { e.stopPropagation(); prev(); }} className="p-2 bg-black/30 hover:bg-white/10 text-white rounded-full backdrop-blur-sm border border-white/10">
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-      </div>
-      <div className="absolute top-1/2 -translate-y-1/2 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button onClick={(e) => { e.stopPropagation(); next(); }} className="p-2 bg-black/30 hover:bg-white/10 text-white rounded-full backdrop-blur-sm border border-white/10">
-          <ChevronRight className="w-6 h-6" />
-        </button>
-      </div>
-
-      {/* Progress Indicators */}
-      <div className="absolute bottom-4 right-8 z-20 flex gap-2">
-        {slides.map((_, i) => (
-          <div 
-            key={i} 
-            className={`h-1 rounded-full transition-all duration-300 ${i === current ? 'w-8 bg-indigo-500' : 'w-2 bg-slate-600'}`} 
-          />
-        ))}
       </div>
     </div>
   );
 };
-
-// --- Shared Business Components (Defined BEFORE Portals) ---
 
 const RatingSystem = ({ idea, onRate, kpis }) => {
   const [scores, setScores] = useState({});
@@ -537,817 +420,404 @@ const RatingSystem = ({ idea, onRate, kpis }) => {
   const calculateGrade = () => {
     let totalWeightedScore = 0;
     const details = [];
-
     kpis.forEach(kpi => {
       const score = scores[kpi.label] || 0;
       const weightedContribution = (score / 5) * kpi.weight;
       totalWeightedScore += weightedContribution;
       details.push({ label: kpi.label, weight: kpi.weight, score });
     });
-    
     const percentage = Math.round(totalWeightedScore);
-    
     let grade = 'F';
     if (percentage >= 80) grade = 'A';
     else if (percentage >= 60) grade = 'B';
     else if (percentage >= 40) grade = 'C';
     else grade = 'D';
-
     return { grade, percentage, details };
   };
 
   const submitRating = () => {
-    const result = calculateGrade();
-    onRate(idea.id, result);
+    onRate(idea.id, calculateGrade());
   };
 
   const currentResult = calculateGrade();
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-6 mb-6 shadow-sm ring-1 ring-slate-100">
-      <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-50">
-        <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-          <Target className="w-4 h-4 text-indigo-600" /> Evaluation
-        </h4>
-        {idea.rating && <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full ring-1 ring-emerald-100"><CheckCircle className="w-3 h-3" /> Saved</span>}
-      </div>
-      
+    <div className="bg-white border border-slate-200 rounded-sm p-6 mb-6 shadow-sm">
+      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-slate-100 pb-2">
+        <Target className="w-4 h-4 text-sky-600" /> Technical Evaluation
+      </h4>
       <div className="space-y-6">
         {kpis.map((kpi, idx) => (
           <div key={idx} className="flex flex-col gap-2">
-            <div className="flex justify-between items-start gap-4">
-               <div className="flex-1">
-                 <div className="text-sm font-bold text-slate-700 leading-tight mb-0.5">{kpi.label}</div>
-                 <div className="text-[10px] text-slate-400 leading-snug">{kpi.description}</div>
-               </div>
-               <span className="flex-shrink-0 text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                 {kpi.weight}%
-               </span>
+            <div className="flex justify-between items-end">
+               <span className="text-sm font-bold text-slate-800">{kpi.label}</span>
+               <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-mono font-bold">Weight: {kpi.weight}%</span>
             </div>
-            
-            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 flex items-center gap-3 mt-1">
-              <span className="text-[10px] font-bold text-slate-400">1</span>
+            <div className="relative pt-1">
               <input 
-                type="range" 
-                min="1" 
-                max="5" 
-                step="1"
+                type="range" min="1" max="5" step="1"
                 value={scores[kpi.label] || 0} 
                 onChange={(e) => handleScoreChange(kpi.label, e.target.value)}
-                className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-sky-700"
               />
-              <span className="text-[10px] font-bold text-slate-400">5</span>
-              <div className={`w-7 h-7 ml-1 flex-shrink-0 flex items-center justify-center font-bold text-xs rounded-full border transition-all duration-200 ${scores[kpi.label] > 0 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-300 border-slate-200'}`}>
-                {scores[kpi.label] || '-'}
+              <div className="flex justify-between text-[9px] uppercase font-bold text-slate-400 mt-1">
+                 <span>Ineffective (1)</span><span>Optimal (5)</span>
               </div>
             </div>
           </div>
         ))}
       </div>
-      
-      <div className="mt-8 pt-6 border-t border-slate-100 bg-slate-50/50 -mx-6 -mb-6 p-6 rounded-b-xl">
-        <div className="flex items-center justify-between mb-4">
-           <div className="flex flex-col">
-             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Score</span>
-             <span className="text-[10px] text-slate-400">Weighted Average</span>
-           </div>
-           <div className="flex items-end gap-2">
-             <span className={`text-3xl font-black leading-none ${currentResult.percentage >= 50 ? 'text-indigo-600' : 'text-slate-400'}`}>{currentResult.percentage}%</span>
-             <span className={`text-sm font-bold mb-1 ${currentResult.grade === 'A' ? 'text-emerald-500' : currentResult.grade === 'B' ? 'text-blue-500' : currentResult.grade === 'C' ? 'text-amber-500' : 'text-red-500'}`}>Grade {currentResult.grade}</span>
-           </div>
+      <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
+        <div>
+           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Feasibility Score</div>
+           <div className="text-3xl font-black text-sky-700">{currentResult.percentage}% <span className="text-lg text-slate-400 font-medium">({currentResult.grade})</span></div>
         </div>
-        <Button onClick={submitRating} className="w-full shadow-lg shadow-indigo-100">Submit Evaluation</Button>
+        <Button onClick={submitRating}>Finalize Review</Button>
       </div>
     </div>
   );
 };
 
-const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateComment, isEmployeeView, onEditIdea, onDeleteIdea, currentUser, onTogglePublic, onRate, kpis }) => {
+const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateComment, isEmployeeView, onEditIdea, onDeleteIdea, currentUser, onTogglePublic, onRate, kpis, onJoinTeam }) => {
   const [comment, setComment] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [editingCommentId, setEditingCommentId] = useState(null);
-  const [tempCommentText, setTempCommentText] = useState('');
   const [aiAnalysis, setAiAnalysis] = useState(idea.aiSummary || null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-
-  const isUrl = (str) => {
-    try { return Boolean(new URL(str)); } catch(e){ return false; }
-  };
-  const isImageLink = (url) => {
-    return (url.includes('drive.google.com') && !url.includes('view?usp=drivesdk')) || url.match(/\.(jpeg|jpg|gif|png)$/) != null || url.includes('googleusercontent');
-  };
-
-  const copyShareLink = (e) => {
-    e.stopPropagation();
-    const url = `${window.location.origin}${window.location.pathname}?share=${idea.id}`;
-    navigator.clipboard.writeText(url);
-    alert("Guest Link Copied to Clipboard!");
-  };
-
-  const handleCommentSubmit = useCallback(() => {
-    if (comment.trim() && onComment) {
-      onComment(idea.id, comment);
-      setComment('');
-    }
-  }, [comment, onComment, idea.id]);
-
-  const startEditComment = (c) => {
-    setEditingCommentId(c.id);
-    setTempCommentText(c.text);
-  };
-
-  const saveEditedComment = () => {
-    if (onUpdateComment && tempCommentText.trim()) {
-      const updatedComments = idea.comments.map(c => 
-        c.id === editingCommentId ? { ...c, text: tempCommentText, editedAt: new Date().toISOString() } : c
-      );
-      onUpdateComment(idea.id, updatedComments);
-      setEditingCommentId(null);
-    }
-  };
+  const [copying, setCopying] = useState(false);
 
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
-    const content = Object.entries(idea.formData).map(([k,v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('\n');
-    const prompt = `Act as an executive business analyst. Analyze this proposal titled "${idea.formTitle}". \n\nCONTENT:\n${content}\n\nPROVIDE:\n1. Executive Summary (1-2 sentences)\n2. 3 Key Benefits\n3. 1 Potential Risk`;
-    
+    const content = Object.entries(idea.formData).map(([k,v]) => `${k}: ${v}`).join('\n');
+    const prompt = `Act as a Petroleum Engineering Consultant. Analyze this proposal titled "${idea.formTitle}". \n\nCONTENT:\n${content}\n\nPROVIDE:\n1. Executive Summary\n2. Operational Benefits (Efficiency/Cost)\n3. HSE Risk Analysis`;
     const analysis = await callGemini(prompt);
-    
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, idea.id), {
-      aiSummary: analysis
-    });
-
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, idea.id), { aiSummary: analysis });
     setAiAnalysis(analysis);
     setIsAnalyzing(false);
   };
 
-  const isEditable = idea.status !== STATUS.APPROVED;
+  const handleShare = () => {
+    setCopying(true);
+    const link = `${window.location.origin}${window.location.pathname}?share=${idea.id}`;
+    const textArea = document.createElement("textarea");
+    textArea.value = link;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    textArea.style.top = "0";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      const successful = document.execCommand('copy');
+      if(successful) alert("Secure Guest Link copied to clipboard.");
+      else prompt("Copy this link manually:", link);
+    } catch (err) {
+      console.error('Fallback copy failed', err);
+      prompt("Copy this link manually:", link);
+    }
+    document.body.removeChild(textArea);
+    setCopying(false);
+  };
+
+  const isCollaborator = idea.collaborators?.some(c => c.id === currentUser?.id);
+  const isOwner = idea.employeeId === currentUser?.id;
 
   return (
     <>
     <Card 
       onClick={() => setShowModal(true)} 
-      className={`transition-all duration-300 hover:shadow-lg cursor-pointer group ${isManager && canApprove && idea.status === STATUS.PENDING ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-transparent'}`}
+      className={`transition-all duration-300 hover:shadow-lg cursor-pointer group border-l-[6px] ${idea.duplicateFlag ? 'border-l-amber-500' : isManager && canApprove && idea.status === STATUS.PENDING ? 'border-l-sky-500' : 'border-l-slate-300'}`}
     >
-      <div className="p-6">
+      <div className="p-5">
         <div className="flex justify-between items-start">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-2 mb-3">
               <Badge status={idea.status} isPublic={idea.isPublic} rating={idea.rating} />
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded">{idea.mainDepartment}</span>
+              {idea.duplicateFlag && (
+                <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-sm flex items-center gap-1 border border-amber-200 uppercase tracking-wide">
+                  <ShieldAlert className="w-3 h-3" /> Duplicate Risk
+                </span>
+              )}
             </div>
-            <h4 className="font-bold text-lg text-slate-900 leading-tight mb-2 truncate pr-4">{idea.formTitle}</h4>
-            <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-              <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[9px] font-bold text-slate-600">
-                {idea.employeeName.charAt(0)}
-              </div>
-              {idea.employeeName}
-              <span className="text-slate-300">•</span>
-              {new Date(idea.submittedAt).toLocaleDateString()}
-              {idea.reviewedBy && (
-                 <span className="ml-2 text-[10px] text-emerald-600 flex items-center gap-1 bg-emerald-50 px-1.5 py-0.5 rounded"><CheckCircle className="w-3 h-3" /> Reviewed</span>
+            <h4 className="font-bold text-base text-slate-800 leading-tight mb-2 truncate pr-4 font-sans">{idea.formTitle}</h4>
+            <div className="flex items-center gap-3 text-xs text-slate-500 font-medium">
+              <span className="flex items-center gap-1"><HardHat className="w-3 h-3" /> {idea.employeeName}</span>
+              <span className="text-slate-300">|</span>
+              <span className="font-mono">{new Date(idea.submittedAt).toLocaleDateString()}</span>
+              {idea.collaborators?.length > 0 && (
+                <span className="ml-2 flex items-center gap-1 text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded-sm border border-sky-100">
+                  <Users className="w-3 h-3" /> +{idea.collaborators.length}
+                </span>
               )}
             </div>
           </div>
-          
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-             <button 
-                onClick={copyShareLink}
-                className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors"
-                title="Copy Guest Link"
-             >
-                <Share2 className="w-4 h-4" />
-             </button>
-             
-             {isEmployeeView && isEditable && (
-               <>
-                 {onEditIdea && (
-                   <button 
-                     onClick={(e) => { e.stopPropagation(); onEditIdea(idea); }} 
-                     className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
-                     title="Edit Proposal"
-                   >
-                     <Pencil className="w-4 h-4" />
-                   </button>
-                 )}
-                 {onDeleteIdea && (
-                   <button 
-                     onClick={(e) => { e.stopPropagation(); if(confirm('Delete this idea?')) onDeleteIdea(idea.id); }} 
-                     className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
-                     title="Delete Proposal"
-                   >
-                     <Trash2 className="w-4 h-4" />
-                   </button>
-                 )}
-               </>
-             )}
-             <div className="p-2 text-slate-300">
-               <ChevronDown className="w-4 h-4" />
-             </div>
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400">
+            <ExternalLink className="w-4 h-4" />
           </div>
         </div>
-        
-        {idea.subDepartments && idea.subDepartments.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-50">
-            {idea.subDepartments.map(sub => (
-              <span key={sub} className="text-[10px] font-semibold bg-slate-50 text-slate-500 px-2 py-1 rounded-md border border-slate-100">{sub}</span>
-            ))}
-          </div>
-        )}
       </div>
     </Card>
 
     <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={idea.formTitle}>
-        <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-100 pb-6 gap-4">
-           <div className="flex flex-col gap-2">
-             <div className="flex items-center gap-3">
-               <Badge status={idea.status} isPublic={idea.isPublic} rating={idea.rating} />
-               <span className="text-sm text-slate-400">|</span>
-               <span className="text-sm font-medium text-slate-600">{idea.mainDepartment}</span>
+        <div className="mb-8 pb-6 border-b border-slate-200">
+           {/* Duplicate Warning for Managers */}
+           {isManager && idea.duplicateFlag && (
+             <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 flex gap-4 animate-fade-in shadow-sm">
+               <div className="bg-white p-2 rounded-full h-fit border border-amber-100 shadow-sm"><ShieldAlert className="w-5 h-5 text-amber-600" /></div>
+               <div className="flex-1">
+                 <h4 className="text-sm font-bold text-amber-900 uppercase tracking-wide">Optimization Alert: Potential Redundancy</h4>
+                 <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                   AI analysis suggests significant overlap with existing initiative: <strong className="font-mono">{idea.duplicateFlag.matchTitle}</strong>. 
+                   <br/>Technical Similarity: {idea.duplicateFlag.reason}
+                 </p>
+                 <div className="mt-3 text-xs font-bold text-amber-900 bg-amber-100 inline-block px-2 py-1 rounded-sm">
+                   Recommended Action: Merge proposals or request collaboration.
+                 </div>
+               </div>
              </div>
-             <div className="text-sm text-slate-500 flex items-center gap-1">
-                Submitted by <span className="font-bold text-slate-900">{idea.employeeName}</span> on {new Date(idea.submittedAt).toLocaleDateString()}
+           )}
+
+           <div className="flex flex-col md:flex-row justify-between gap-6">
+             <div className="bg-slate-100 p-4 rounded-sm border border-slate-200 flex-1">
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                   <div>
+                      <span className="block text-slate-400 uppercase font-bold tracking-wider mb-1 text-[10px]">Proposer</span>
+                      <span className="font-bold text-slate-800">{idea.employeeName}</span>
+                   </div>
+                   <div>
+                      <span className="block text-slate-400 uppercase font-bold tracking-wider mb-1 text-[10px]">Department</span>
+                      <span className="font-bold text-slate-800">{idea.mainDepartment}</span>
+                   </div>
+                   {idea.collaborators?.length > 0 && (
+                     <div className="col-span-2 pt-2 border-t border-slate-200">
+                       <span className="block text-slate-400 uppercase font-bold tracking-wider mb-1 text-[10px]">Engineering Team</span>
+                       <div className="flex flex-wrap gap-2">
+                         {idea.collaborators.map((c, i) => (
+                           <span key={i} className="bg-white px-2 py-1 rounded-sm border border-slate-200 text-slate-700 font-medium shadow-sm">{c.name}</span>
+                         ))}
+                       </div>
+                     </div>
+                   )}
+                </div>
              </div>
-           </div>
-           
-           <div className="flex gap-3 w-full md:w-auto">
-             {/* Public Publish Button for Managers */}
-             {isManager && canApprove && idea.status === STATUS.APPROVED && (
-               <Button 
-                 variant={idea.isPublic ? "secondary" : "ai"} 
-                 onClick={() => onTogglePublic && onTogglePublic(idea.id, !idea.isPublic)} 
-                 className="flex-1 md:flex-none text-xs h-9"
-               >
-                 <Globe className="w-4 h-4 mr-1.5" /> {idea.isPublic ? "Unpublish" : "Publish"}
-               </Button>
-             )}
              
-             <Button variant="secondary" onClick={() => generatePDF(idea, aiAnalysis)} className="flex-1 md:flex-none text-xs h-9">
-               <FileDown className="w-4 h-4 mr-1.5" /> Report
-             </Button>
+             <div className="flex flex-col gap-2 min-w-[180px]">
+                {/* Actions for Employees */}
+                {isEmployeeView && isOwner && (
+                  <div className="grid grid-cols-2 gap-2">
+                   <Button variant="secondary" onClick={() => onEditIdea(idea)} className="h-9 text-xs">
+                     <Pencil className="w-3 h-3 mr-1.5" /> Revise
+                   </Button>
+                   <Button variant="danger" onClick={() => { if(confirm("Are you sure you want to withdraw this proposal?")) onDeleteIdea(idea.id); }} className="h-9 text-xs">
+                     <Trash2 className="w-3 h-3 mr-1.5" /> Withdraw
+                   </Button>
+                  </div>
+                )}
+
+                {onJoinTeam && !isOwner && !isCollaborator && (
+                  <Button variant="ai" onClick={() => onJoinTeam(idea.id)} className="h-9 text-xs">
+                    <Handshake className="w-4 h-4 mr-1.5" /> Join Project
+                  </Button>
+                )}
+                {isManager && canApprove && (
+                   <Button variant="secondary" onClick={() => onTogglePublic(idea.id, !idea.isPublic)} className="h-9 text-xs">
+                      {idea.isPublic ? <Globe className="w-4 h-4 mr-1.5 text-sky-600" /> : <Globe className="w-4 h-4 mr-1.5" />} {idea.isPublic ? "Unpublish" : "Publish to Global"}
+                   </Button>
+                )}
+                
+                {(isOwner || isManager) && (
+                   <Button variant="secondary" onClick={handleShare} className="h-9 text-xs">
+                     <Share2 className="w-4 h-4 mr-1.5" /> {copying ? "Link Copied" : "External Share"}
+                   </Button>
+                )}
+
+                <Button variant="primary" onClick={() => generatePDF(idea, aiAnalysis)} className="h-9 text-xs">
+                  <Printer className="w-4 h-4 mr-1.5" /> Export PDF
+                </Button>
+             </div>
            </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-8">
-              {/* AI Analysis Section */}
-              <div className="relative">
-                {!aiAnalysis ? (
-                  <Button variant="ai" onClick={handleAnalyze} disabled={isAnalyzing} className="w-full h-12 shadow-md shadow-indigo-100">
-                    {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <BrainCircuit className="w-4 h-4 mr-2" />}
-                    {isAnalyzing ? "Analyzing Proposal..." : "Generate AI Executive Summary"}
-                  </Button>
-                ) : (
-                  <div className="bg-gradient-to-br from-violet-50 to-indigo-50 border border-violet-100 p-6 rounded-xl animate-fade-in shadow-sm">
-                    <div className="flex justify-between items-start mb-4">
-                      <h4 className="text-sm font-bold text-violet-800 flex items-center gap-2">
-                        <Sparkles className="w-4 h-4" /> AI Analysis
-                      </h4>
-                      <button onClick={() => setAiAnalysis(null)} className="text-violet-400 hover:text-violet-600 text-xs font-medium">Reset</button>
-                    </div>
-                    <div className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{aiAnalysis}</div>
+              {/* AI Analysis */}
+              {!aiAnalysis ? (
+                <Button variant="ai" onClick={handleAnalyze} disabled={isAnalyzing} className="w-full h-14 shadow-lg flex-col gap-1 border-indigo-200">
+                  <div className="flex items-center gap-2">
+                    {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <BrainCircuit className="w-4 h-4" />}
+                    <span>{isAnalyzing ? "Processing Technical Data..." : "Run AI Technical Assessment"}</span>
                   </div>
-                )}
-              </div>
+                  <span className="text-[10px] opacity-70 font-normal normal-case">Generates Summary, Benefits & Risk Analysis</span>
+                </Button>
+              ) : (
+                <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 p-6 rounded-sm shadow-sm relative overflow-hidden">
+                   <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                   <h4 className="font-bold text-indigo-900 flex items-center gap-2 mb-4 text-sm uppercase tracking-wider"><Sparkles className="w-4 h-4" /> AI Technical Review</h4>
+                   <div className="whitespace-pre-wrap text-sm text-slate-700 leading-relaxed font-mono text-justify">{aiAnalysis}</div>
+                </div>
+              )}
 
-              <div className="space-y-8">
-                  {Object.entries(idea.formData).map(([k, v]) => (
-                    <div key={k} className="group">
-                      <span className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 group-hover:text-indigo-600 transition-colors">{k}</span>
-                      {Array.isArray(v) ? (
-                        <div className="flex flex-wrap gap-2">
-                          {v.map((val, idx) => (
-                            <span key={idx} className="bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-xs font-medium border border-slate-200">{val}</span>
-                          ))}
-                        </div>
-                      ) : isUrl(v) ? (
-                        isImageLink(getDirectLink(v)) ? (
-                          <div className="mt-2 border rounded-lg p-2 bg-slate-50 inline-block max-w-full">
-                            <img src={getDirectLink(v)} alt={k} className="max-w-full h-auto rounded shadow-sm max-h-96 object-contain" />
-                            <a href={v} target="_blank" rel="noreferrer" className="block text-xs text-indigo-500 mt-2 hover:underline text-center font-medium">View Full Resolution</a>
-                          </div>
-                        ) : (
-                          <a href={v} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 font-medium bg-white px-4 py-3 rounded-lg border border-slate-200 transition-colors shadow-sm">
-                              <Paperclip className="w-4 h-4" /> View Attachment
-                          </a>
-                        )
-                      ) : (
-                        <div className="text-sm text-slate-800 leading-7 whitespace-pre-wrap bg-slate-50/50 p-4 rounded-lg border border-slate-100/50">{v}</div>
-                      )}
-                    </div>
-                  ))}
+              {/* Form Data */}
+              <div className="space-y-6">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2">Proposal Details</h4>
+                {Object.entries(idea.formData).map(([k, v]) => (
+                  <div key={k} className="group">
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                      <div className="w-1 h-1 bg-sky-500 rounded-full"></div> {k}
+                    </span>
+                    <div className="text-sm text-slate-900 leading-7 whitespace-pre-wrap bg-white p-4 rounded-sm border border-slate-200 shadow-sm font-medium">{Array.isArray(v) ? v.join(', ') : v}</div>
+                  </div>
+                ))}
               </div>
             </div>
 
             <div className="lg:col-span-1 space-y-6">
-               {/* Manager Rating System */}
-              {isManager && (
-                <RatingSystem idea={idea} onRate={onRate} kpis={kpis} />
-              )}
+              {isManager && kpis && <RatingSystem idea={idea} onRate={onRate} kpis={kpis} />}
               
-              {/* Read-only Rating View for Employee */}
-              {isEmployeeView && idea.rating && (
-                <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-xl shadow-sm">
-                  <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-widest flex items-center gap-2 mb-4">
-                      <Award className="w-4 h-4" /> Manager Evaluation
-                  </h4>
-                  <div className="flex items-center gap-4 mb-4">
-                      <div className="text-4xl font-black text-emerald-900">{idea.rating.grade}</div>
-                      <div className="h-10 w-px bg-emerald-200"></div>
-                      <div className="text-sm font-bold text-emerald-700">{idea.rating.percentage}% Score</div>
-                  </div>
-                  <div className="space-y-2">
-                    {idea.rating.details.map((d, i) => (
-                      <div key={i} className="flex justify-between text-xs text-emerald-800/80 border-b border-emerald-100/50 pb-1 last:border-0">
-                        <span>{d.label}</span>
-                        <span className="font-bold">{d.score}/5</span>
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-sm shadow-sm">
+                  <h5 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <MessageSquare className="w-3 h-3" /> Technical Discussion
+                  </h5>
+                  <div className="space-y-3 mb-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                    {idea.comments?.length > 0 ? idea.comments.map((c, i) => (
+                      <div key={i} className="text-xs bg-white p-3 rounded-sm border border-slate-200 shadow-sm relative">
+                        <div className="flex justify-between mb-1 items-center">
+                          <span className="font-bold text-slate-800">{c.author}</span>
+                          <span className="text-[9px] text-slate-400 font-mono">{new Date(c.date).toLocaleDateString()}</span>
+                        </div>
+                        <p className="text-slate-600 leading-relaxed">{c.text}</p>
                       </div>
-                    ))}
+                    )) : <p className="text-xs text-slate-400 italic text-center py-4">No technical queries logged yet.</p>}
                   </div>
+                  <div className="flex gap-2">
+                    <input className="flex-1 text-xs border border-slate-300 px-3 py-2 rounded-sm focus:outline-none focus:border-sky-500" placeholder="Add technical note..." value={comment} onChange={e => setComment(e.target.value)} />
+                    <Button onClick={() => { onComment(idea.id, comment); setComment(''); }} disabled={!comment.trim()} className="px-3">
+                      <Send className="w-3 h-3" />
+                    </Button>
+                  </div>
+              </div>
+
+              {isManager && canApprove && (
+                <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-200">
+                   <Button variant="danger" className="w-full" onClick={() => { onStatus(idea.id, STATUS.REJECTED); setShowModal(false); }}>Reject</Button>
+                   <Button variant="success" className="w-full" onClick={() => { onStatus(idea.id, STATUS.APPROVED); setShowModal(false); }}>Approve & Fund</Button>
                 </div>
               )}
-
-              <div className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm h-fit sticky top-6">
-                  <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <MessageSquare className="w-3 h-3" /> Discussion
-                  </h5>
-                  <div className="space-y-4 mb-6 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                    {idea.comments && idea.comments.length > 0 ? idea.comments.map((c, i) => (
-                      <div key={c.id || i} className="text-sm bg-slate-50 p-3 rounded-lg border border-slate-100 group">
-                        <div className="flex justify-between items-center mb-1.5">
-                          <span className="font-bold text-slate-900 text-xs">{c.author}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-slate-400">{new Date(c.date).toLocaleDateString()}</span>
-                            {currentUser && currentUser.name === c.author && (
-                              <button onClick={() => startEditComment(c)} className="text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Pencil className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        
-                        {editingCommentId === c.id ? (
-                          <div className="flex gap-2 mt-2">
-                            <input 
-                              className="flex-1 border border-slate-300 px-2 py-1 text-xs rounded shadow-sm focus:outline-none focus:border-indigo-500"
-                              value={tempCommentText}
-                              onChange={e => setTempCommentText(e.target.value)}
-                              autoFocus
-                            />
-                            <button onClick={saveEditedComment} className="text-emerald-600 hover:bg-emerald-50 p-1 rounded"><Save className="w-3 h-3" /></button>
-                            <button onClick={() => setEditingCommentId(null)} className="text-red-600 hover:bg-red-50 p-1 rounded"><X className="w-3 h-3" /></button>
-                          </div>
-                        ) : (
-                          <span className="text-slate-600 leading-relaxed block">{c.text} {c.editedAt && <span className="text-[9px] text-slate-400 italic ml-1">(edited)</span>}</span>
-                        )}
-                      </div>
-                    )) : <p className="text-xs text-slate-400 italic text-center py-4">No comments yet.</p>}
-                  </div>
-                  
-                  {(isManager || isEmployeeView) && (
-                    <div className="flex gap-2 items-center bg-slate-50 p-1.5 rounded-lg border border-slate-200 focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
-                      <input 
-                        className="flex-1 text-sm px-3 py-2 bg-transparent border-none focus:outline-none" 
-                        placeholder="Type a comment..." 
-                        value={comment} 
-                        onChange={e => setComment(e.target.value)} 
-                        onKeyDown={e => { if (e.key === 'Enter') handleCommentSubmit(); }}
-                      />
-                      <button 
-                        onClick={handleCommentSubmit} 
-                        disabled={!comment.trim()} 
-                        className="bg-slate-900 text-white hover:bg-slate-800 p-2 rounded-md disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors shadow-sm"
-                      >
-                        <Send className="w-3 h-3" />
-                      </button>
-                    </div>
-                  )}
-              </div>
             </div>
         </div>
-
-        {/* Manager Approval Actions */}
-        {isManager && canApprove && (
-            <div className="flex gap-4 pt-8 mt-8 border-t border-slate-100">
-              {idea.status !== STATUS.REJECTED && (
-                <Button variant="danger" className="flex-1 h-12 shadow-red-100" onClick={() => { onStatus(idea.id, STATUS.REJECTED); setShowModal(false); }}>
-                   {idea.status === STATUS.APPROVED ? "Revoke Approval" : "Reject Proposal"}
-                </Button>
-              )}
-              
-              {idea.status !== STATUS.APPROVED && (
-                <Button variant="success" className="flex-1 h-12 shadow-emerald-100" onClick={() => { onStatus(idea.id, STATUS.APPROVED); setShowModal(false); }}>
-                   {idea.status === STATUS.REJECTED ? "Reconsider" : "Approve & Authorize"}
-                </Button>
-              )}
-            </div>
-        )}
-           
-        {isManager && !canApprove && (
-            <div className="bg-slate-50 text-center text-xs text-slate-500 italic p-4 rounded-lg mt-8 border border-slate-200 flex items-center justify-center gap-2">
-              <Lock className="w-3 h-3" /> Read Only: Authority lies with {idea.mainDepartment}
-            </div>
-        )}
     </Modal>
     </>
   );
 };
 
-// ... [Existing Admin Sub-Components: UserApprovalRow, UserManagement, GuestManagement, DepartmentManager, KPIManager, FormBuilder]
+// ... [CollaborationHub, KPIManager, UserApprovalRow, UserManagement, GuestManagement, DepartmentManager, FormBuilder - Keep logic but update styling slightly]
 
-const KPIManager = ({ kpis, onUpdate }) => {
-  const [newKPI, setNewKPI] = useState({ label: '', description: '', weight: 0 });
-
-  const add = () => {
-    if (!newKPI.label || !newKPI.weight) return;
-    const updated = [...kpis, newKPI];
-    onUpdate(updated);
-    setNewKPI({ label: '', description: '', weight: 0 });
-  };
-
-  const remove = (index) => {
-    const updated = kpis.filter((_, i) => i !== index);
-    onUpdate(updated);
-  };
-
-  const totalWeight = kpis.reduce((acc, curr) => acc + parseInt(curr.weight), 0);
+const CollaborationHub = ({ currentUser, ideas, onJoinTeam }) => {
+  const opportunities = ideas.filter(i => 
+    i.status !== STATUS.REJECTED && 
+    (i.formData["Collaboration Needed?"] === "Yes" || i.isPublic) && 
+    i.employeeId !== currentUser.id
+  );
 
   return (
-    <Card className="p-6">
-      <h3 className="font-bold text-lg text-slate-900 mb-6 flex items-center gap-2">
-        <Target className="w-5 h-5" /> KPI Configuration
-      </h3>
-      
-      <div className="bg-slate-50 border border-slate-200 p-4 rounded-lg mb-6">
-        <div className="flex gap-2 items-end mb-4">
-          <div className="flex-1">
-             <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">KPI Name</label>
-             <input className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm focus:border-indigo-500 focus:outline-none" value={newKPI.label} onChange={e => setNewKPI({...newKPI, label: e.target.value})} />
+    <div className="space-y-6 animate-fade-in">
+       <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-sm p-8 text-white shadow-md border-l-4 border-l-amber-500">
+          <div className="flex items-center gap-6">
+             <div className="p-4 bg-white/5 rounded-full backdrop-blur-sm border border-white/10">
+               <Handshake className="w-10 h-10 text-amber-500" />
+             </div>
+             <div>
+                <h2 className="text-2xl font-bold uppercase tracking-wide font-sans">Collaboration Matrix</h2>
+                <p className="text-slate-300 font-mono text-sm mt-1">Cross-functional resource allocation for active projects.</p>
+             </div>
           </div>
-          <div className="flex-1">
-             <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Description</label>
-             <input className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm focus:border-indigo-500 focus:outline-none" value={newKPI.description} onChange={e => setNewKPI({...newKPI, description: e.target.value})} />
-          </div>
-          <div className="w-24">
-             <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Weight %</label>
-             <input type="number" className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm focus:border-indigo-500 focus:outline-none" value={newKPI.weight} onChange={e => setNewKPI({...newKPI, weight: e.target.value})} />
-          </div>
-          <Button onClick={add}>Add</Button>
-        </div>
-        <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest text-slate-500 px-1">
-           <span>Total Weight: {totalWeight}%</span>
-           {totalWeight !== 100 && <span className="text-amber-600 bg-amber-50 px-2 py-1 rounded">Warning: Total should be 100%</span>}
-        </div>
-      </div>
+       </div>
 
-      <div className="space-y-3">
-        {kpis.map((k, i) => (
-          <div key={i} className="flex justify-between items-center p-4 border border-slate-100 rounded-lg hover:bg-slate-50 hover:border-slate-200 transition-all shadow-sm">
-            <div>
-              <div className="font-bold text-slate-800 text-sm flex items-center gap-2">{k.label} <span className="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded text-[10px]"> {k.weight}%</span></div>
-              <div className="text-xs text-slate-400 mt-0.5">{k.description}</div>
+       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {opportunities.length === 0 && (
+            <div className="col-span-full text-center py-16 bg-slate-50 rounded-sm border-2 border-dashed border-slate-300">
+               <div className="mx-auto w-16 h-16 bg-white rounded-full flex items-center justify-center text-slate-400 mb-4 shadow-sm">
+                 <Users className="w-8 h-8" />
+               </div>
+               <h4 className="text-slate-600 font-bold mb-1">No Active Calls for Collaboration</h4>
+               <p className="text-slate-400 text-sm">Check back later for cross-departmental opportunities.</p>
             </div>
-            <button onClick={() => remove(i)} className="text-slate-300 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition-colors"><Trash2 className="w-4 h-4" /></button>
-          </div>
-        ))}
-      </div>
-    </Card>
+          )}
+          {opportunities.map(idea => (
+            <IdeaCard 
+              key={idea.id} 
+              idea={idea} 
+              currentUser={currentUser} 
+              onJoinTeam={onJoinTeam} 
+              isEmployeeView={true} 
+            />
+          ))}
+       </div>
+    </div>
   );
+};
+
+// [Admin Components Omitted for Brevity - using same structure but inheriting new styles via generic UI components]
+const KPIManager = ({ kpis, onUpdate }) => {
+    // ... same logic
+    const [newKPI, setNewKPI] = useState({ label: '', description: '', weight: 0 });
+    const add = () => { if (!newKPI.label || !newKPI.weight) return; onUpdate([...kpis, newKPI]); setNewKPI({ label: '', description: '', weight: 0 }); };
+    const remove = (index) => { onUpdate(kpis.filter((_, i) => i !== index)); };
+    const totalWeight = kpis.reduce((acc, curr) => acc + parseInt(curr.weight), 0);
+    return (
+      <Card className="p-6">
+        <h3 className="font-bold text-lg text-slate-900 mb-6 flex items-center gap-2"><Target className="w-5 h-5" /> KPI Configuration</h3>
+        <div className="bg-slate-50 border border-slate-200 p-4 rounded-lg mb-6"><div className="flex gap-2 items-end mb-4"><div className="flex-1"><label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">KPI Name</label><input className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm focus:border-indigo-500 focus:outline-none" value={newKPI.label} onChange={e => setNewKPI({...newKPI, label: e.target.value})} /></div><div className="flex-1"><label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Description</label><input className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm focus:border-indigo-500 focus:outline-none" value={newKPI.description} onChange={e => setNewKPI({...newKPI, description: e.target.value})} /></div><div className="w-24"><label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Weight %</label><input type="number" className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm focus:border-indigo-500 focus:outline-none" value={newKPI.weight} onChange={e => setNewKPI({...newKPI, weight: e.target.value})} /></div><Button onClick={add}>Add</Button></div><div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest text-slate-500 px-1"><span>Total Weight: {totalWeight}%</span>{totalWeight !== 100 && <span className="text-amber-600 bg-amber-50 px-2 py-1 rounded">Warning: Total should be 100%</span>}</div></div><div className="space-y-3">{kpis.map((k, i) => (<div key={i} className="flex justify-between items-center p-4 border border-slate-100 rounded-lg hover:bg-slate-50 hover:border-slate-200 transition-all shadow-sm"><div><div className="font-bold text-slate-800 text-sm flex items-center gap-2">{k.label} <span className="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded text-[10px]"> {k.weight}%</span></div><div className="text-xs text-slate-400 mt-0.5">{k.description}</div></div><button onClick={() => remove(i)} className="text-slate-300 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition-colors"><Trash2 className="w-4 h-4" /></button></div>))}</div>
+      </Card>
+    );
 };
 
 const UserApprovalRow = ({ user, depts, onApprove, isEditMode, onUpdate, onDelete }) => {
+    // ... same logic
   const [role, setRole] = useState(user.role || ROLES.EMPLOYEE);
   const [dept, setDept] = useState(user.department || '');
   const [isEditing, setIsEditing] = useState(false);
-
-  useEffect(() => {
-    setRole(user.role || ROLES.EMPLOYEE);
-    setDept(user.department || '');
-  }, [user]);
-
-  const handleAction = () => {
-    if (isEditMode) {
-      if (isEditing) {
-        onUpdate(user.id, { role, department: dept });
-        setIsEditing(false);
-      } else {
-        setIsEditing(true);
-      }
-    } else {
-      onApprove(user.id, role, dept);
-    }
-  };
-
+  useEffect(() => { setRole(user.role || ROLES.EMPLOYEE); setDept(user.department || ''); }, [user]);
+  const handleAction = () => { if (isEditMode) { if (isEditing) { onUpdate(user.id, { role, department: dept }); setIsEditing(false); } else { setIsEditing(true); } } else { onApprove(user.id, role, dept); } };
   const showInputs = !isEditMode || isEditing;
-
-  return (
-    <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-sm border border-slate-200">
-      {showInputs ? (
-        <>
-          <select className="text-xs border-none bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer" value={role} onChange={e => setRole(e.target.value)}>
-            <option value={ROLES.EMPLOYEE}>Employee</option><option value={ROLES.MANAGER}>Manager</option>
-          </select>
-          <div className="w-px h-4 bg-slate-300"></div>
-          <select className="text-xs border-none bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer w-32" value={dept} onChange={e => setDept(e.target.value)}>
-            <option value="">Select Dept...</option>{depts.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-          </select>
-        </>
-      ) : (
-        <div className="flex items-center gap-2 px-2 text-xs font-medium text-slate-600">
-          <span>{role}</span>
-          <span className="text-slate-300">|</span>
-          <span>{dept}</span>
-        </div>
-      )}
-      
-      <Button 
-        variant={isEditMode && isEditing ? "primary" : "success"} 
-        onClick={handleAction} 
-        disabled={showInputs && !dept} 
-        className="py-1 px-3 text-xs h-7"
-      >
-        {isEditMode ? (isEditing ? <Save className="w-3 h-3" /> : <Pencil className="w-3 h-3" />) : "Approve"}
-      </Button>
-      
-      {/* Delete User Button for Admin */}
-      {onDelete && (
-        <button 
-          onClick={() => { if(confirm("Are you sure you want to remove this user?")) onDelete(user.id); }} 
-          className="text-slate-400 hover:text-red-600 p-1 ml-1"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      )}
-    </div>
-  );
+  return (<div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-sm border border-slate-200">{showInputs ? (<><select className="text-xs border-none bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer" value={role} onChange={e => setRole(e.target.value)}><option value={ROLES.EMPLOYEE}>Employee</option><option value={ROLES.MANAGER}>Manager</option></select><div className="w-px h-4 bg-slate-300"></div><select className="text-xs border-none bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer w-32" value={dept} onChange={e => setDept(e.target.value)}><option value="">Select Dept...</option>{depts.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}</select></>) : (<div className="flex items-center gap-2 px-2 text-xs font-medium text-slate-600"><span>{role}</span><span className="text-slate-300">|</span><span>{dept}</span></div>)}<Button variant={isEditMode && isEditing ? "primary" : "success"} onClick={handleAction} disabled={showInputs && !dept} className="py-1 px-3 text-xs h-7">{isEditMode ? (isEditing ? <Save className="w-3 h-3" /> : <Pencil className="w-3 h-3" />) : "Approve"}</Button>{onDelete && (<button onClick={() => { if(confirm("Are you sure you want to remove this user?")) onDelete(user.id); }} className="text-slate-400 hover:text-red-600 p-1 ml-1"><Trash2 className="w-4 h-4" /></button>)}</div>);
 };
 
 const UserManagement = ({ users, departments, onApprove, onUpdate, onDelete }) => {
+    // ... same logic
   const pending = useMemo(() => users.filter(u => u.status === STATUS.PENDING), [users]);
   const active = useMemo(() => users.filter(u => u.status === STATUS.APPROVED && u.role !== ROLES.ADMIN), [users]);
-  
-  return (
-    <div className="space-y-6">
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-6">
-           <UserPlus className="w-5 h-5 text-slate-900" />
-           <h3 className="font-bold text-lg text-slate-900">Pending Access Requests</h3>
-        </div>
-        {pending.length === 0 ? (
-          <div className="text-slate-400 text-sm italic py-4">No pending requests.</div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {pending.map(u => (
-              <div key={u.id} className="py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                  <div className="font-bold text-slate-900">{u.name}</div>
-                  <div className="text-xs text-slate-500 font-mono">{u.email}</div>
-                </div>
-                <UserApprovalRow user={u} depts={departments} onApprove={onApprove} onDelete={onDelete} />
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-6">
-           <Users className="w-5 h-5 text-slate-900" />
-           <h3 className="font-bold text-lg text-slate-900">Active Directory</h3>
-        </div>
-        {active.length === 0 ? (
-          <div className="text-slate-400 text-sm italic py-4">No active users found.</div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {active.map(u => (
-              <div key={u.id} className="py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                  <div className="font-bold text-slate-900">{u.name}</div>
-                  <div className="text-xs text-slate-500 font-mono">{u.email}</div>
-                </div>
-                <UserApprovalRow 
-                  user={u} 
-                  depts={departments} 
-                  isEditMode={true} 
-                  onUpdate={onUpdate}
-                  onDelete={onDelete} 
-                />
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-    </div>
-  );
+  return (<div className="space-y-6"><Card className="p-6"><div className="flex items-center gap-2 mb-6"><UserPlus className="w-5 h-5 text-slate-900" /><h3 className="font-bold text-lg text-slate-900">Pending Access Requests</h3></div>{pending.length === 0 ? (<div className="text-slate-400 text-sm italic py-4">No pending requests.</div>) : (<div className="divide-y divide-slate-100">{pending.map(u => (<div key={u.id} className="py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4"><div><div className="font-bold text-slate-900">{u.name}</div><div className="text-xs text-slate-500 font-mono">{u.email}</div></div><UserApprovalRow user={u} depts={departments} onApprove={onApprove} onDelete={onDelete} /></div>))}</div>)}</Card><Card className="p-6"><div className="flex items-center gap-2 mb-6"><Users className="w-5 h-5 text-slate-900" /><h3 className="font-bold text-lg text-slate-900">Active Directory</h3></div>{active.length === 0 ? (<div className="text-slate-400 text-sm italic py-4">No active users found.</div>) : (<div className="divide-y divide-slate-100">{active.map(u => (<div key={u.id} className="py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4"><div><div className="font-bold text-slate-900">{u.name}</div><div className="text-xs text-slate-500 font-mono">{u.email}</div></div><UserApprovalRow user={u} depts={departments} isEditMode={true} onUpdate={onUpdate} onDelete={onDelete} /></div>))}</div>)}</Card></div>);
 };
 
 const GuestManagement = ({ guests, onApprove, onAdd, onDelete }) => {
+    // ... same logic
   const [newEmail, setNewEmail] = useState('');
-  
-  return (
-    <Card className="p-6">
-      <h3 className="font-bold text-lg text-slate-900 mb-6 flex items-center gap-2">
-        <Globe className="w-5 h-5" /> Guest Access Control
-      </h3>
-      
-      <div className="flex gap-2 mb-8 p-4 bg-slate-50 rounded-sm border border-slate-200">
-        <input 
-          className="flex-1 bg-white border border-slate-300 rounded-sm px-3 py-2 text-sm" 
-          placeholder="Pre-approve Guest Email" 
-          value={newEmail} 
-          onChange={e => setNewEmail(e.target.value)} 
-        />
-        <Button onClick={() => { onAdd(newEmail); setNewEmail(''); }} disabled={!newEmail}>Add Guest</Button>
-      </div>
-
-      <div className="space-y-2">
-        {guests.length === 0 && <div className="text-slate-400 text-sm italic">No guests configured.</div>}
-        {guests.map(g => (
-          <div key={g.id} className="flex justify-between items-center p-3 border rounded-sm hover:bg-slate-50">
-            <div className="flex items-center gap-3">
-              <div className={`w-2 h-2 rounded-full ${g.status === STATUS.APPROVED ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-              <span className="font-mono text-sm">{g.email}</span>
-              {g.status === STATUS.PENDING && <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded">Pending Request</span>}
-            </div>
-            <div className="flex gap-2">
-              {g.status === STATUS.PENDING && (
-                <Button variant="success" className="px-3 py-1 text-xs h-8" onClick={() => onApprove(g.id)}>Approve</Button>
-              )}
-              <button onClick={() => onDelete(g.id)} className="text-slate-400 hover:text-red-600 p-2"><Trash2 className="w-4 h-4" /></button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
+  return (<Card className="p-6"><h3 className="font-bold text-lg text-slate-900 mb-6 flex items-center gap-2"><Globe className="w-5 h-5" /> Guest Access Control</h3><div className="flex gap-2 mb-8 p-4 bg-slate-50 rounded-sm border border-slate-200"><input className="flex-1 bg-white border border-slate-300 rounded-sm px-3 py-2 text-sm" placeholder="Pre-approve Guest Email" value={newEmail} onChange={e => setNewEmail(e.target.value)} /><Button onClick={() => { onAdd(newEmail); setNewEmail(''); }} disabled={!newEmail}>Add Guest</Button></div><div className="space-y-2">{guests.length === 0 && <div className="text-slate-400 text-sm italic">No guests configured.</div>}{guests.map(g => (<div key={g.id} className="flex justify-between items-center p-3 border rounded-sm hover:bg-slate-50"><div className="flex items-center gap-3"><div className={`w-2 h-2 rounded-full ${g.status === STATUS.APPROVED ? 'bg-emerald-500' : 'bg-amber-500'}`} /><span className="font-mono text-sm">{g.email}</span>{g.status === STATUS.PENDING && <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded">Pending Request</span>}</div><div className="flex gap-2">{g.status === STATUS.PENDING && (<Button variant="success" className="px-3 py-1 text-xs h-8" onClick={() => onApprove(g.id)}>Approve</Button>)}<button onClick={() => onDelete(g.id)} className="text-slate-400 hover:text-red-600 p-2"><Trash2 className="w-4 h-4" /></button></div></div>))}</div></Card>);
 };
 
 const DepartmentManager = ({ departments, showToast }) => {
+    // ... same logic
   const [name, setName] = useState('');
-  const add = async () => {
-    if(!name) return;
-    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.DEPARTMENTS), { name });
-    setName(''); showToast("Organization unit added");
-  };
-  return (
-    <Card className="p-6">
-      <h3 className="font-bold text-lg text-slate-900 mb-6">Organizational Structure</h3>
-      <div className="flex gap-2 mb-8">
-        <div className="flex-1">
-          <input className="w-full px-4 py-2 border border-slate-300 rounded-sm focus:outline-none focus:border-slate-900" value={name} onChange={e => setName(e.target.value)} placeholder="New Department Name" />
-        </div>
-        <Button onClick={add} variant="primary" className="h-full">Add Unit</Button>
-      </div>
-      <div className="flex flex-wrap gap-3">
-        {departments.map(d => (
-          <div key={d.id} className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-sm text-sm font-semibold shadow-sm flex items-center gap-2">
-            <Briefcase className="w-3 h-3 text-slate-400" />
-            {d.name}
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
+  const add = async () => { if(!name) return; await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.DEPARTMENTS), { name }); setName(''); showToast("Organization unit added"); };
+  return (<Card className="p-6"><h3 className="font-bold text-lg text-slate-900 mb-6">Organizational Structure</h3><div className="flex gap-2 mb-8"><div className="flex-1"><input className="w-full px-4 py-2 border border-slate-300 rounded-sm focus:outline-none focus:border-slate-900" value={name} onChange={e => setName(e.target.value)} placeholder="New Department Name" /></div><Button onClick={add} variant="primary" className="h-full">Add Unit</Button></div><div className="flex flex-wrap gap-3">{departments.map(d => (<div key={d.id} className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-sm text-sm font-semibold shadow-sm flex items-center gap-2"><Briefcase className="w-3 h-3 text-slate-400" />{d.name}</div>))}</div></Card>);
 };
 
 const FormBuilder = ({ forms, showToast }) => {
+    // ... same logic
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState(null); 
   const [newForm, setNewForm] = useState({ category: '', title: '', fields: DEFAULT_FORM_FIELDS });
   const [field, setField] = useState({ label: '', type: 'text', options: '' });
-
-  const startEdit = (form) => {
-    setNewForm(form);
-    setEditingId(form.id);
-    setIsCreating(true);
-  };
-
-  const save = async () => {
-    // Process default fields or new fields if options string exists
-    const processedFields = newForm.fields.map(f => {
-      if ((f.type === 'dropdown' || f.type === 'checkbox') && typeof f.options === 'string') {
-         return { ...f, options: f.options.split(',').map(o => o.trim()) };
-      }
-      return f;
-    });
-
-    const formToSave = { ...newForm, fields: processedFields };
-
-    if (editingId) {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS, editingId), formToSave);
-      showToast("Template Updated");
-    } else {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS), formToSave);
-      showToast("Template Saved");
-    }
-    setIsCreating(false);
-    setEditingId(null);
-    setNewForm({ category: '', title: '', fields: DEFAULT_FORM_FIELDS });
-  };
-
-  const cancel = () => {
-    setIsCreating(false);
-    setEditingId(null);
-    setNewForm({ category: '', title: '', fields: DEFAULT_FORM_FIELDS });
-  };
-
-  const addField = () => {
-    if (field.label) {
-      // If options provided as string, keep as string for display until save
-      // or split immediately. Splitting immediately is safer for UI rendering preview.
-      let newField = { ...field };
-      if ((field.type === 'dropdown' || field.type === 'checkbox') && field.options) {
-         newField.options = field.options.split(',').map(o => o.trim());
-      }
-      
-      setNewForm(prev => ({...prev, fields: [...prev.fields, newField]}));
-      setField({label:'', type:'text', options: ''});
-    }
-  };
-
-  if(!isCreating) return (
-    <Card className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="font-bold text-lg text-slate-900">Form Templates</h3>
-        <Button onClick={() => setIsCreating(true)} variant="primary"><Plus className="w-4 h-4 mr-1" /> New Template</Button>
-      </div>
-      <div className="grid gap-3">
-        {forms.map(f => (
-          <div key={f.id} className="p-4 border border-slate-200 rounded-sm flex justify-between items-center hover:bg-slate-50 transition-colors">
-            <div>
-              <span className="font-bold text-slate-800">{f.title}</span>
-              <span className="ml-3 text-xs font-bold text-slate-400 uppercase tracking-widest">{f.category}</span>
-            </div>
-            <button onClick={() => startEdit(f)} className="text-slate-400 hover:text-indigo-600 p-2 rounded-full hover:bg-white">
-              <Pencil className="w-4 h-4" />
-            </button>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-
-  return (
-    <Card className="p-8 border-l-4 border-l-slate-900">
-      <h3 className="font-bold text-xl text-slate-900 mb-6">{editingId ? 'Edit Template' : 'Design New Template'}</h3>
-      <div className="space-y-4 mb-8">
-        <Input label="Category" value={newForm.category} onChange={e => setNewForm({...newForm, category: e.target.value})} placeholder="e.g. Health & Safety" />
-        <Input label="Title" value={newForm.title} onChange={e => setNewForm({...newForm, title: e.target.value})} placeholder="e.g. Incident Report" />
-      </div>
-
-      <div className="bg-slate-50 p-6 rounded-sm border border-slate-200 mb-8">
-        <h4 className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-4">Field Configuration</h4>
-        <div className="flex gap-3 mb-4 items-end">
-          <div className="flex-1">
-             <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Field Name</label>
-             <input className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm" placeholder="e.g. Cost Estimate" value={field.label} onChange={e => setField({...field, label: e.target.value})} />
-          </div>
-          <div className="w-1/3">
-             <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Type</label>
-             <select className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm bg-white" value={field.type} onChange={e => setField({...field, type: e.target.value})}>
-              <option value="text">Text Input</option>
-              <option value="textarea">Text Area</option>
-              <option value="number">Numeric</option>
-              <option value="date">Date Picker</option>
-              <option value="dropdown">Dropdown List</option>
-              <option value="checkbox">Checkbox Group</option>
-              <option value="file">File Attachment</option>
-              <option value="image">Image Upload</option>
-            </select>
-          </div>
-          {(field.type === 'dropdown' || field.type === 'checkbox') && (
-            <div className="flex-1">
-               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Options (comma separated)</label>
-               <input className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm" placeholder="Option 1, Option 2" value={field.options} onChange={e => setField({...field, options: e.target.value})} />
-            </div>
-          )}
-          <Button onClick={addField} variant="secondary">Add</Button>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {newForm.fields.map((f, i) => (
-            <div key={i} className="bg-white border border-slate-300 px-3 py-1 rounded-sm text-xs font-mono text-slate-600 flex items-center gap-2 group relative">
-              {f.label} <span className="opacity-50">({f.type})</span>
-              <button 
-                onClick={() => setNewForm(prev => ({...prev, fields: prev.fields.filter((_, idx) => idx !== i)}))}
-                className="text-red-500 hover:text-red-700 ml-1"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="flex justify-end gap-3">
-        <Button variant="ghost" onClick={cancel}>Discard</Button>
-        <Button onClick={save} variant="primary">{editingId ? 'Update Template' : 'Publish Template'}</Button>
-      </div>
-    </Card>
-  );
+  const startEdit = (form) => { setNewForm(form); setEditingId(form.id); setIsCreating(true); };
+  const save = async () => { const processedFields = newForm.fields.map(f => { if ((f.type === 'dropdown' || f.type === 'checkbox') && typeof f.options === 'string') { return { ...f, options: f.options.split(',').map(o => o.trim()) }; } return f; }); const formToSave = { ...newForm, fields: processedFields }; if (editingId) { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS, editingId), formToSave); showToast("Template Updated"); } else { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS), formToSave); showToast("Template Saved"); } setIsCreating(false); setEditingId(null); setNewForm({ category: '', title: '', fields: DEFAULT_FORM_FIELDS }); };
+  const cancel = () => { setIsCreating(false); setEditingId(null); setNewForm({ category: '', title: '', fields: DEFAULT_FORM_FIELDS }); };
+  const addField = () => { if (field.label) { let newField = { ...field }; if ((field.type === 'dropdown' || field.type === 'checkbox') && field.options) { newField.options = field.options.split(',').map(o => o.trim()); } setNewForm(prev => ({...prev, fields: [...prev.fields, newField]})); setField({label:'', type:'text', options: ''}); } };
+  if(!isCreating) return (<Card className="p-6"><div className="flex justify-between items-center mb-6"><h3 className="font-bold text-lg text-slate-900">Form Templates</h3><Button onClick={() => setIsCreating(true)} variant="primary"><Plus className="w-4 h-4 mr-1" /> New Template</Button></div><div className="grid gap-3">{forms.map(f => (<div key={f.id} className="p-4 border border-slate-200 rounded-sm flex justify-between items-center hover:bg-slate-50 transition-colors"><div><span className="font-bold text-slate-800">{f.title}</span><span className="ml-3 text-xs font-bold text-slate-400 uppercase tracking-widest">{f.category}</span></div><button onClick={() => startEdit(f)} className="text-slate-400 hover:text-indigo-600 p-2 rounded-full hover:bg-white"><Pencil className="w-4 h-4" /></button></div>))}</div></Card>);
+  return (<Card className="p-8 border-l-4 border-l-slate-900"><h3 className="font-bold text-xl text-slate-900 mb-6">{editingId ? 'Edit Template' : 'Design New Template'}</h3><div className="space-y-4 mb-8"><Input label="Category" value={newForm.category} onChange={e => setNewForm({...newForm, category: e.target.value})} placeholder="e.g. Health & Safety" /><Input label="Title" value={newForm.title} onChange={e => setNewForm({...newForm, title: e.target.value})} placeholder="e.g. Incident Report" /></div><div className="bg-slate-50 p-6 rounded-sm border border-slate-200 mb-8"><h4 className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-4">Field Configuration</h4><div className="flex gap-3 mb-4 items-end"><div className="flex-1"><label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Field Name</label><input className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm" placeholder="e.g. Cost Estimate" value={field.label} onChange={e => setField({...field, label: e.target.value})} /></div><div className="w-1/3"><label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Type</label><select className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm bg-white" value={field.type} onChange={e => setField({...field, type: e.target.value})}><option value="text">Text Input</option><option value="textarea">Text Area</option><option value="number">Numeric</option><option value="date">Date Picker</option><option value="dropdown">Dropdown List</option><option value="checkbox">Checkbox Group</option><option value="file">File Attachment</option><option value="image">Image Upload</option></select></div>{(field.type === 'dropdown' || field.type === 'checkbox') && (<div className="flex-1"><label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Options (comma separated)</label><input className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm" placeholder="Option 1, Option 2" value={field.options} onChange={e => setField({...field, options: e.target.value})} /></div>)}<Button onClick={addField} variant="secondary">Add</Button></div><div className="flex flex-wrap gap-2">{newForm.fields.map((f, i) => (<div key={i} className="bg-white border border-slate-300 px-3 py-1 rounded-sm text-xs font-mono text-slate-600 flex items-center gap-2 group relative">{f.label} <span className="opacity-50">({f.type})</span><button onClick={() => setNewForm(prev => ({...prev, fields: prev.fields.filter((_, idx) => idx !== i)}))} className="text-red-500 hover:text-red-700 ml-1"><X className="w-3 h-3" /></button></div>))}</div></div><div className="flex justify-end gap-3"><Button variant="ghost" onClick={cancel}>Discard</Button><Button onClick={save} variant="primary">{editingId ? 'Update Template' : 'Publish Template'}</Button></div></Card>);
 };
 
-// --- Portal Components (Defined AFTER dependencies) ---
-
 const AdminPortal = ({ showToast }) => {
+    // ... same logic
   const [activeTab, setActiveTab] = useState('users');
   const [users, setUsers] = useState([]);
   const [forms, setForms] = useState([]);
@@ -1360,130 +830,64 @@ const AdminPortal = ({ showToast }) => {
     const unsub2 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS), s => setForms(s.docs.map(d => ({id:d.id, ...d.data()}))));
     const unsub3 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.DEPARTMENTS), s => setDepartments(s.docs.map(d => ({id:d.id, ...d.data()}))));
     const unsub4 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS), s => setGuests(s.docs.map(d => ({id:d.id, ...d.data()}))));
-    
-    // Load KPIs (or set default if empty)
-    const unsub5 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.KPIS), async (s) => {
-       if (s.empty) {
-         const batch = writeBatch(db);
-         const kpiRef = doc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.KPIS));
-         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.KPIS, 'config'), { list: DEFAULT_KPIS });
-       } else {
-         const data = s.docs.find(d => d.id === 'config')?.data();
-         setKpis(data?.list || DEFAULT_KPIS);
-       }
-    });
-
+    const unsub5 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.KPIS), async (s) => { if (s.empty) { const batch = writeBatch(db); const kpiRef = doc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.KPIS)); await setDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.KPIS, 'config'), { list: DEFAULT_KPIS }); } else { const data = s.docs.find(d => d.id === 'config')?.data(); setKpis(data?.list || DEFAULT_KPIS); }});
     return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); };
   }, []);
 
-  const updateKPIs = async (newList) => {
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.KPIS, 'config'), { list: newList });
-    showToast("KPIs Updated");
-  };
-
-  const approveUser = useCallback(async (id, role, dept) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS, id), { status: STATUS.APPROVED, role, department: dept });
-    showToast("User access granted.");
-  }, [showToast]);
-
-  const updateUser = useCallback(async (id, data) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS, id), data);
-    showToast("User details updated.");
-  }, [showToast]);
-
-  const deleteUser = useCallback(async (id) => {
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS, id));
-    showToast("User removed.");
-  }, [showToast]);
-
-  const approveGuest = useCallback(async (id) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS, id), { status: STATUS.APPROVED });
-    showToast("Guest access authorized.");
-  }, [showToast]);
-
-  const addGuest = useCallback(async (email) => {
-    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS), { email, status: STATUS.APPROVED, addedAt: new Date().toISOString() });
-    showToast("Guest pre-approved.");
-  }, [showToast]);
-
-  const deleteGuest = useCallback(async (id) => {
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS, id));
-    showToast("Guest removed.");
-  }, [showToast]);
+  const updateKPIs = async (newList) => { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.KPIS, 'config'), { list: newList }); showToast("KPIs Updated"); };
+  const approveUser = useCallback(async (id, role, dept) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS, id), { status: STATUS.APPROVED, role, department: dept }); showToast("User access granted."); }, [showToast]);
+  const updateUser = useCallback(async (id, data) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS, id), data); showToast("User details updated."); }, [showToast]);
+  const deleteUser = useCallback(async (id) => { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS, id)); showToast("User removed."); }, [showToast]);
+  const approveGuest = useCallback(async (id) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS, id), { status: STATUS.APPROVED }); showToast("Guest access authorized."); }, [showToast]);
+  const addGuest = useCallback(async (email) => { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS), { email, status: STATUS.APPROVED, addedAt: new Date().toISOString() }); showToast("Guest pre-approved."); }, [showToast]);
+  const deleteGuest = useCallback(async (id) => { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS, id)); showToast("Guest removed."); }, [showToast]);
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">System Administration</h1>
-        <p className="text-slate-500 mt-1">Manage users, configuration, and organizational structure.</p>
-      </div>
-
+      <div className="mb-8"><h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">System Administration</h1><p className="text-slate-500 mt-1">Manage users, configuration, and organizational structure.</p></div>
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
-        {/* Sticky Sidebar for Desktop */}
         <div className="md:col-span-3 sticky top-24 space-y-2 z-10 overflow-x-auto md:overflow-visible flex md:block gap-2 md:gap-0 pb-2 md:pb-0">
-          {[
-            { id: 'users', label: 'Access Control', icon: Users },
-            { id: 'guests', label: 'Guest Access', icon: Globe },
-            { id: 'kpis', label: 'KPI Management', icon: Target },
-            { id: 'departments', label: 'Departments', icon: Briefcase },
-            { id: 'forms', label: 'Form Templates', icon: Layout }
-          ].map(tab => (
-            <button 
-              key={tab.id} 
-              onClick={() => setActiveTab(tab.id)} 
-              className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-all whitespace-nowrap md:whitespace-normal ${
-                activeTab === tab.id 
-                ? 'bg-slate-900 text-white font-medium shadow-md translate-x-1' 
-                : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-100 hover:border-slate-200'
-              }`}
-            >
-              <tab.icon className="w-4 h-4 flex-shrink-0" /> {tab.label}
-            </button>
-          ))}
+          {[{ id: 'users', label: 'Access Control', icon: Users }, { id: 'guests', label: 'Guest Access', icon: Globe }, { id: 'kpis', label: 'KPI Management', icon: Target }, { id: 'departments', label: 'Departments', icon: Briefcase }, { id: 'forms', label: 'Form Templates', icon: Layout }].map(tab => (<button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-all whitespace-nowrap md:whitespace-normal ${activeTab === tab.id ? 'bg-slate-900 text-white font-medium shadow-md translate-x-1' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-100 hover:border-slate-200'}`}><tab.icon className="w-4 h-4 flex-shrink-0" /> {tab.label}</button>))}
         </div>
-        
-        <div className="md:col-span-9 space-y-8">
-          {activeTab === 'users' && <UserManagement users={users} departments={departments} onApprove={approveUser} onUpdate={updateUser} onDelete={deleteUser} />}
-          {activeTab === 'guests' && <GuestManagement guests={guests} onApprove={approveGuest} onAdd={addGuest} onDelete={deleteGuest} />}
-          {activeTab === 'kpis' && <KPIManager kpis={kpis} onUpdate={updateKPIs} />}
-          {activeTab === 'forms' && <FormBuilder forms={forms} showToast={showToast} />}
-          {activeTab === 'departments' && <DepartmentManager departments={departments} showToast={showToast} />}
-        </div>
+        <div className="md:col-span-9 space-y-8">{activeTab === 'users' && <UserManagement users={users} departments={departments} onApprove={approveUser} onUpdate={updateUser} onDelete={deleteUser} />}{activeTab === 'guests' && <GuestManagement guests={guests} onApprove={approveGuest} onAdd={addGuest} onDelete={deleteGuest} />}{activeTab === 'kpis' && <KPIManager kpis={kpis} onUpdate={updateKPIs} />}{activeTab === 'forms' && <FormBuilder forms={forms} showToast={showToast} />}{activeTab === 'departments' && <DepartmentManager departments={departments} showToast={showToast} />}</div>
       </div>
     </div>
   );
 };
 
 const EmployeePortal = ({ currentUser, showToast }) => {
+  const [tab, setTab] = useState('new'); // 'new', 'history', 'collab'
   const [departments, setDepartments] = useState([]);
   const [forms, setForms] = useState([]);
-  const [myIdeas, setMyIdeas] = useState([]);
+  const [allIdeas, setAllIdeas] = useState([]); // Needed for duplicate check & collab
   const [activeForm, setActiveForm] = useState(null);
-  const [editingIdeaId, setEditingIdeaId] = useState(null); // Track idea edit
+  const [editingIdeaId, setEditingIdeaId] = useState(null);
   const [submission, setSubmission] = useState({});
   const [targetDept, setTargetDept] = useState('');
   const [subDepts, setSubDepts] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [originalStatus, setOriginalStatus] = useState(null);
 
   useEffect(() => {
     const unsub1 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.DEPARTMENTS), s => setDepartments(s.docs.map(d => ({id:d.id, ...d.data()}))));
     const unsub2 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS), s => setForms(s.docs.map(d => ({id:d.id, ...d.data()}))));
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), where('employeeId', '==', currentUser.id));
-    const unsub3 = onSnapshot(q, s => setMyIdeas(s.docs.map(d => ({id:d.id, ...d.data()}))));
+    // Subscribe to ALL ideas for duplicate checking and collaboration
+    const unsub3 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), s => setAllIdeas(s.docs.map(d => ({id:d.id, ...d.data()}))));
     return () => { unsub1(); unsub2(); unsub3(); };
-  }, [currentUser]);
+  }, []);
 
-  // Load idea into edit mode
+  const myIdeas = useMemo(() => allIdeas.filter(i => i.employeeId === currentUser.id), [allIdeas, currentUser]);
+
   const handleEditIdea = (idea) => {
-    const matchingForm = forms.find(f => f.title === idea.formTitle && f.category === idea.category) || 
-                         forms.find(f => f.title === idea.formTitle); 
-    
+    const matchingForm = forms.find(f => f.title === idea.formTitle && f.category === idea.category) || forms.find(f => f.title === idea.formTitle); 
     if (matchingForm) {
       setActiveForm(matchingForm);
       setSubmission(idea.formData);
       setTargetDept(idea.mainDepartment);
       setSubDepts(idea.subDepartments || []);
       setEditingIdeaId(idea.id);
+      setOriginalStatus(idea.status);
     } else {
       showToast("Original Form Template not found. Cannot edit.", "error");
     }
@@ -1491,58 +895,33 @@ const EmployeePortal = ({ currentUser, showToast }) => {
 
   const handleDeleteIdea = async (id) => {
     await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id));
-    showToast("Idea deleted.");
+    showToast("Proposal record deleted.");
   };
 
   const handleFileUpload = useCallback(async (file, label) => {
     if (!file) return;
-    
-    // 5MB Limit
-    if (file.size > 5 * 1024 * 1024) {
-      showToast("File is too large. Max size is 5MB.", "error");
-      return;
-    }
-
+    if (file.size > 10 * 1024 * 1024) { showToast("File limit exceeded (Max 10MB).", "error"); return; }
     setUploading(true);
-    
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = async () => {
       const base64 = reader.result.split(',')[1];
-      const payload = {
-        filename: file.name,
-        mimeType: file.type,
-        bytes: base64
-      };
-
+      const payload = { filename: file.name, mimeType: file.type, bytes: base64 };
       try {
-        const response = await fetch(GOOGLE_SCRIPT_URL, {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-        
+        const response = await fetch(GOOGLE_SCRIPT_URL, { method: "POST", body: JSON.stringify(payload) });
         const data = await response.json();
-        
         if (data.status === 'success') {
            setSubmission(prev => ({ ...prev, [label]: data.url }));
-           showToast("File uploaded to Corporate Drive securely.", "success");
-        } else {
-           throw new Error(data.message || "Script Error");
-        }
-      } catch (error) {
-        console.error("Upload Error:", error);
-        showToast("Upload failed. Ensure Script URL is correct.", "error");
-      } finally {
-        setUploading(false);
-      }
+           showToast("Technical document uploaded securely.", "success");
+        } else { throw new Error(data.message || "Script Error"); }
+      } catch (error) { showToast("Upload failed. Check connection.", "error"); } finally { setUploading(false); }
     };
   }, [showToast]);
 
   const handleRefine = async (fieldLabel, currentText) => {
     if (!currentText) return;
-    const prompt = `Rewrite the following text to be professional, concise, and suitable for a corporate proposal:\n\n"${currentText}"`;
-    showToast("Refining text with AI...", "success");
-    
+    const prompt = `Rewrite the following technical description to be concise, professional, and suitable for an Oil & Gas engineering proposal:\n\n"${currentText}"`;
+    showToast("AI refining technical language...", "success");
     const refinedText = await callGemini(prompt);
     setSubmission(prev => ({ ...prev, [fieldLabel]: refinedText }));
   };
@@ -1550,297 +929,240 @@ const EmployeePortal = ({ currentUser, showToast }) => {
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     if (!targetDept) return showToast("Please select a target department", "error");
+    setIsSubmitting(true);
+    showToast("AI Audit: Checking for redundancies...", "ai");
     
+    // AI Duplicate Check
+    const duplicateResult = await checkDuplicates(activeForm.title, JSON.stringify(submission), activeForm.category);
+
     const ideaData = {
       employeeId: currentUser.id,
       employeeName: currentUser.name,
-      status: STATUS.PENDING, 
+      status: STATUS.PENDING, // Always reset status to pending on edit/submit
       formTitle: activeForm.title,
       category: activeForm.category, 
       formData: submission,
       mainDepartment: targetDept,
       subDepartments: subDepts,
       submittedAt: new Date().toISOString(),
+      // Save duplicate flag if AI detects one
+      duplicateFlag: duplicateResult?.isDuplicate ? {
+        matchId: duplicateResult.matchId,
+        matchTitle: duplicateResult.matchTitle,
+        reason: duplicateResult.reason
+      } : null
     };
 
     if (editingIdeaId) {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, editingIdeaId), ideaData);
-      showToast("Proposal Updated Successfully");
+      showToast("Proposal Revised. Returned to Asset Manager for approval.");
     } else {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), {
-        ...ideaData,
-        comments: [] 
-      });
-      showToast("Proposal Submitted Successfully");
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), { ...ideaData, comments: [], collaborators: [] });
+      if (ideaData.duplicateFlag) {
+         showToast("Proposal Submitted. Note: AI Audit flagged potential overlap.", "warning");
+      } else {
+         showToast("Proposal Submitted Successfully");
+      }
     }
 
-    setActiveForm(null); setSubmission({}); setTargetDept(''); setSubDepts([]); setEditingIdeaId(null);
+    setActiveForm(null); setSubmission({}); setTargetDept(''); setSubDepts([]); setEditingIdeaId(null); setIsSubmitting(false); setOriginalStatus(null);
   }, [activeForm, currentUser, showToast, submission, subDepts, targetDept, editingIdeaId]);
 
   const handleComment = useCallback(async (id, text) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
-      comments: arrayUnion({ 
-        id: Date.now(), 
-        author: currentUser.name, 
-        text, 
-        date: new Date().toISOString() 
-      })
-    });
-    showToast("Reply added");
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), { comments: arrayUnion({ id: Date.now(), author: currentUser.name, text, date: new Date().toISOString() }) });
+    showToast("Technical note added");
   }, [currentUser, showToast]);
 
   const handleUpdateComment = useCallback(async (ideaId, updatedComments) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, ideaId), {
-      comments: updatedComments
-    });
-    showToast("Comment updated");
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, ideaId), { comments: updatedComments });
+    showToast("Note updated");
   }, [showToast]);
+
+  const handleJoinTeam = useCallback(async (id) => {
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
+      collaborators: arrayUnion({ id: currentUser.id, name: currentUser.name, joinedAt: new Date().toISOString() })
+    });
+    showToast("You have been added to the project team.", "success");
+  }, [currentUser, showToast]);
 
   const toggleSubDept = (deptName) => {
     setSubDepts(prev => prev.includes(deptName) ? prev.filter(d => d !== deptName) : [...prev, deptName]);
   };
 
-  // Helper for checkbox change
   const handleCheckboxChange = (label, option) => {
     const currentValues = submission[label] || [];
-    if (currentValues.includes(option)) {
-      setSubmission(prev => ({ ...prev, [label]: currentValues.filter(v => v !== option) }));
-    } else {
-      setSubmission(prev => ({ ...prev, [label]: [...currentValues, option] }));
-    }
+    if (currentValues.includes(option)) { setSubmission(prev => ({ ...prev, [label]: currentValues.filter(v => v !== option) })); } 
+    else { setSubmission(prev => ({ ...prev, [label]: [...currentValues, option] })); }
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      <div className="lg:col-span-2">
-        
-        <div className="mb-6">
-           <h2 className="text-xl font-bold text-slate-900">Submit New Proposal</h2>
-           <p className="text-slate-500">Select a category to begin your submission.</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {forms.map(form => (
-            <button key={form.id} onClick={() => { setActiveForm(form); setEditingIdeaId(null); setSubmission({}); }} className="flex items-start p-6 bg-white border border-slate-200 rounded-xl hover:border-indigo-200 hover:shadow-md transition-all text-left group">
-              <div className="mr-4 bg-slate-50 p-3 rounded-lg group-hover:bg-indigo-50 transition-colors">
-                <FileText className="w-6 h-6 text-slate-600 group-hover:text-indigo-600" />
-              </div>
-              <div>
-                <div className="font-bold text-lg text-slate-800 group-hover:text-slate-900">{form.title}</div>
-                <div className="text-sm text-slate-500 mt-1 uppercase tracking-wide text-[10px] font-medium">{form.category}</div>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {/* Modal for Form Submission */}
-        <Modal isOpen={!!activeForm} onClose={() => { setActiveForm(null); setEditingIdeaId(null); }} title={editingIdeaId ? `Edit: ${activeForm?.title}` : (activeForm?.title || "New Submission")}>
-            <form onSubmit={handleSubmit} className="space-y-8">
-              
-              {/* Header Info */}
-              <div className="bg-indigo-50/50 p-4 rounded-lg border border-indigo-100 flex items-start gap-3">
-                 <AlertCircle className="w-5 h-5 text-indigo-600 mt-0.5 flex-shrink-0" />
-                 <div>
-                    <h4 className="text-sm font-bold text-indigo-900">Submission Guidelines</h4>
-                    <p className="text-xs text-indigo-700 mt-1">Please provide detailed information. Fields marked with <span className="text-rose-500">*</span> are required. Use AI refinement for clarity.</p>
-                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {activeForm?.fields.map((f, i) => {
-                  const isLongField = ['textarea', 'file', 'image', 'checkbox'].includes(f.type) || f.label.toLowerCase().includes('title') || f.label.toLowerCase().includes('description');
-                  
-                  return (
-                  <div key={i} className={`group ${isLongField ? 'col-span-1 md:col-span-2' : 'col-span-1'}`}>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2 group-focus-within:text-indigo-600 transition-colors">
-                      {f.label} {f.required && <span className="text-rose-500">*</span>}
-                    </label>
-                    
-                    {f.type === 'textarea' ? (
-                      <div className="relative">
-                        <textarea 
-                          className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 text-sm rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all min-h-[120px] shadow-sm resize-y" 
-                          required={f.required} 
-                          value={submission[f.label] || ''}
-                          onChange={e => setSubmission({...submission, [f.label]: e.target.value})} 
-                          placeholder={`Enter ${f.label.toLowerCase()}...`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleRefine(f.label, submission[f.label])}
-                          className="absolute right-3 bottom-3 text-xs bg-white text-indigo-600 px-3 py-1.5 rounded-full border border-indigo-100 flex items-center gap-1.5 hover:bg-indigo-50 hover:border-indigo-200 transition-all shadow-sm font-medium"
-                          title="Rewrite professionally with AI"
-                        >
-                          <Sparkles className="w-3 h-3" /> Refine with AI
-                        </button>
-                      </div>
-                    ) : f.type === 'dropdown' ? (
-                       // Conditional Rendering: Pills for Short Lists, Dropdown for Long Lists
-                       (f.options && f.options.length <= 5) ? (
-                          <div className="flex flex-wrap gap-2">
-                             {f.options.map((opt, idx) => (
-                                <button
-                                   key={idx}
-                                   type="button"
-                                   onClick={() => setSubmission({...submission, [f.label]: opt})}
-                                   className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
-                                      submission[f.label] === opt 
-                                      ? "bg-indigo-600 text-white border-indigo-600 shadow-md" 
-                                      : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
-                                   }`}
-                                >
-                                   {opt}
-                                </button>
-                             ))}
-                          </div>
-                       ) : (
-                         <div className="relative">
-                           <select 
-                              className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 text-sm rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all appearance-none shadow-sm"
-                              required={f.required}
-                              value={submission[f.label] || ''}
-                              onChange={e => setSubmission({...submission, [f.label]: e.target.value})}
-                           >
-                              <option value="">Select an option...</option>
-                              {f.options && f.options.map((opt, idx) => (
-                                 <option key={idx} value={opt}>{opt}</option>
-                              ))}
-                           </select>
-                           <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                         </div>
-                       )
-                    ) : f.type === 'checkbox' ? (
-                       <div className="flex flex-wrap gap-3 bg-slate-50 p-4 rounded-lg border border-slate-100">
-                          {f.options && f.options.map((opt, idx) => (
-                             <label key={idx} className="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer hover:text-slate-900 bg-white px-3 py-2 rounded border border-slate-200 shadow-sm transition-all hover:border-slate-300">
-                                <input 
-                                   type="checkbox" 
-                                   className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                                   checked={(submission[f.label] || []).includes(opt)}
-                                   onChange={() => handleCheckboxChange(f.label, opt)}
-                                />
-                                {opt}
-                             </label>
-                          ))}
-                       </div>
-                    ) : (f.type === 'file' || f.type === 'image') ? (
-                       <div className="bg-slate-50 border border-dashed border-slate-300 p-6 rounded-lg hover:bg-slate-100 transition-colors text-center h-full flex flex-col justify-center">
-                          {submission[f.label] ? (
-                             <div className="flex flex-col items-center gap-2">
-                               <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
-                                 <FileCheck className="w-5 h-5" />
-                               </div>
-                               <span className="text-sm font-medium text-emerald-700">File Uploaded Successfully</span>
-                               <button 
-                                 type="button" 
-                                 onClick={() => setSubmission({...submission, [f.label]: null})}
-                                 className="text-xs text-red-500 hover:text-red-700 underline mt-1"
-                               >
-                                 Remove File
-                               </button>
-                             </div>
-                          ) : (
-                             <label className="flex flex-col items-center gap-2 cursor-pointer w-full h-full justify-center">
-                                {uploading ? (
-                                  <>
-                                    <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-                                    <span className="text-sm text-indigo-600 font-medium">Uploading to Drive...</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div className="w-10 h-10 bg-white rounded-full shadow-sm flex items-center justify-center text-slate-400 mb-1">
-                                      <Upload className="w-5 h-5" />
-                                    </div>
-                                    <span className="text-sm font-medium text-slate-700">Click to Upload Document</span>
-                                    <span className="text-xs text-slate-400">Format: {f.type === 'image' ? 'Images (JPG, PNG)' : 'PDF, DOCX, Images'} (Max 5MB)</span>
-                                    <input 
-                                      type="file" 
-                                      className="hidden" 
-                                      accept={f.type === 'image' ? "image/*" : "*/*"}
-                                      onChange={(e) => handleFileUpload(e.target.files[0], f.label)}
-                                      disabled={uploading}
-                                    />
-                                  </>
-                                )}
-                             </label>
-                          )}
-                          {submission[f.label] && <input type="hidden" value={submission[f.label]} required={f.required} />}
-                       </div>
-                    ) : (
-                      <input 
-                        type={f.type} 
-                        className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 text-sm rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all shadow-sm placeholder-slate-400" 
-                        required={f.required} 
-                        value={submission[f.label] || ''}
-                        onChange={e => setSubmission({...submission, [f.label]: e.target.value})} 
-                        placeholder={`Enter ${f.label.toLowerCase()}...`}
-                      />
-                    )}
-                  </div>
-                  );
-                })}
-              </div>
-
-              {/* Footer Section */}
-              <div className="bg-slate-50 p-6 rounded-lg border border-slate-200 space-y-6">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-900 mb-3">Primary Authority (Approval)</label>
-                  <div className="relative">
-                    <select className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 text-sm rounded-lg focus:outline-none focus:border-indigo-500 shadow-sm appearance-none" value={targetDept} onChange={e => setTargetDept(e.target.value)} required>
-                      <option value="">Select Department...</option>
-                      {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-                    </select>
-                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-900 mb-3">Cross-Functional Tags</label>
-                  <div className="flex flex-wrap gap-2">
-                    {departments.map(d => (
-                      <button 
-                        type="button" 
-                        key={d.id} 
-                        onClick={() => toggleSubDept(d.name)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all duration-200 ${subDepts.includes(d.name) ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
-                      >
-                        {d.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
-                 <Button variant="ghost" onClick={() => { setActiveForm(null); setEditingIdeaId(null); }}>Cancel</Button>
-                 <Button variant="primary" type="submit" className="px-8 shadow-lg shadow-indigo-100" disabled={uploading}>
-                   {editingIdeaId ? "Update Proposal" : "Submit Proposal"}
-                 </Button>
-              </div>
-            </form>
-        </Modal>
-
+    <div>
+      <div className="flex gap-6 mb-6 border-b border-slate-200">
+         <button onClick={() => setTab('new')} className={`pb-3 border-b-2 font-bold text-xs uppercase tracking-wider transition-colors ${tab==='new' ? 'border-sky-700 text-sky-800' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>New Proposal</button>
+         <button onClick={() => setTab('history')} className={`pb-3 border-b-2 font-bold text-xs uppercase tracking-wider transition-colors ${tab==='history' ? 'border-sky-700 text-sky-800' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>My Portfolio</button>
+         <button onClick={() => setTab('collab')} className={`pb-3 border-b-2 font-bold text-xs uppercase tracking-wider transition-colors ${tab==='collab' ? 'border-sky-700 text-sky-800' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>Collaboration Matrix</button>
       </div>
 
-      <div>
-        <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-          <BarChart3 className="w-5 h-5 text-slate-400" />
-          My History
-        </h3>
+      {tab === 'collab' && <CollaborationHub currentUser={currentUser} ideas={allIdeas} onJoinTeam={handleJoinTeam} />}
+
+      {tab === 'history' && (
         <div className="space-y-4">
-           {myIdeas.length === 0 && <div className="text-sm text-slate-400 italic">No submissions found.</div>}
-           {myIdeas.map(idea => (
-             <IdeaCard 
-                key={idea.id} 
-                idea={idea} 
-                isEmployeeView={true} 
-                onComment={handleComment} 
-                onUpdateComment={handleUpdateComment}
-                onEditIdea={handleEditIdea}
-                onDeleteIdea={idea.status === STATUS.PENDING || idea.status === STATUS.REJECTED ? handleDeleteIdea : null}
-                currentUser={currentUser}
-             />
-           ))}
+           {myIdeas.length === 0 && <div className="text-sm text-slate-400 italic py-10 text-center">No submitted proposals found.</div>}
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+             {myIdeas.map(idea => (
+               <IdeaCard 
+                  key={idea.id} 
+                  idea={idea} 
+                  isEmployeeView={true} 
+                  onComment={handleComment} 
+                  onUpdateComment={handleUpdateComment}
+                  onEditIdea={handleEditIdea}
+                  onDeleteIdea={handleDeleteIdea}
+                  currentUser={currentUser}
+               />
+             ))}
+           </div>
         </div>
-      </div>
+      )}
+
+      {tab === 'new' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2">
+            <div className="mb-6">
+               <h2 className="text-xl font-bold text-slate-900 font-sans">Submit Proposal</h2>
+               <p className="text-slate-500 text-sm">Select a technical category to initiate the approval workflow.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {forms.map(form => (
+                <button key={form.id} onClick={() => { setActiveForm(form); setEditingIdeaId(null); setSubmission({}); }} className="flex items-start p-5 bg-white border border-slate-200 rounded-sm hover:border-sky-500 hover:shadow-md transition-all text-left group">
+                  <div className="mr-4 bg-slate-50 p-2.5 rounded-sm group-hover:bg-sky-50 transition-colors border border-slate-100">
+                    <FileText className="w-5 h-5 text-slate-500 group-hover:text-sky-600" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-base text-slate-800 group-hover:text-sky-900">{form.title}</div>
+                    <div className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-bold">{form.category}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <Modal isOpen={!!activeForm} onClose={() => { setActiveForm(null); setEditingIdeaId(null); setOriginalStatus(null); }} title={editingIdeaId ? `Revision: ${activeForm?.title}` : (activeForm?.title || "New Submission")}>
+                <form onSubmit={handleSubmit} className="space-y-8">
+                  {editingIdeaId && originalStatus === STATUS.APPROVED && (
+                    <div className="bg-amber-50 p-4 rounded-sm border-l-4 border-amber-500 flex items-start gap-3">
+                       <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                       <div>
+                          <h4 className="text-sm font-bold text-amber-900">Workflow Reset Warning</h4>
+                          <p className="text-xs text-amber-800 mt-1">Modifying an approved proposal will reset its status to <strong>PENDING</strong> and trigger a new management review cycle.</p>
+                       </div>
+                    </div>
+                  )}
+
+                  <div className="bg-sky-50 p-4 rounded-sm border-l-4 border-sky-600 flex items-start gap-3">
+                     <BrainCircuit className="w-5 h-5 text-sky-700 mt-0.5 flex-shrink-0" />
+                     <div>
+                        <h4 className="text-sm font-bold text-sky-900">AI-Powered Audit Active</h4>
+                        <p className="text-xs text-sky-800 mt-1">Your submission will be instantly audited for duplicates against the global database to prevent redundancy.</p>
+                     </div>
+                  </div>
+
+                  {/* Form fields rendering */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {activeForm?.fields.map((f, i) => {
+                      const isLongField = ['textarea', 'file', 'image', 'checkbox'].includes(f.type) || f.label.toLowerCase().includes('title') || f.label.toLowerCase().includes('description');
+                      return (
+                      <div key={i} className={`group ${isLongField ? 'col-span-1 md:col-span-2' : 'col-span-1'}`}>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 group-focus-within:text-sky-700 transition-colors">
+                          {f.label} {f.required && <span className="text-amber-600">*</span>}
+                        </label>
+                        {f.type === 'textarea' ? (
+                          <div className="relative">
+                            <textarea className="w-full px-4 py-3 bg-white border border-slate-300 text-slate-900 text-sm rounded-sm focus:outline-none focus:border-sky-600 focus:ring-1 focus:ring-sky-600 transition-all min-h-[140px] shadow-sm resize-y font-medium" required={f.required} value={submission[f.label] || ''} onChange={e => setSubmission({...submission, [f.label]: e.target.value})} placeholder={`Provide detailed ${f.label.toLowerCase()}...`} />
+                            <button type="button" onClick={() => handleRefine(f.label, submission[f.label])} className="absolute right-3 bottom-3 text-[10px] bg-slate-100 text-sky-700 px-2 py-1 rounded-sm border border-slate-200 flex items-center gap-1.5 hover:bg-sky-50 hover:border-sky-200 transition-all font-bold uppercase tracking-wide" title="Rewrite professionally with AI"><Sparkles className="w-3 h-3" /> AI Refine</button>
+                          </div>
+                        ) : f.type === 'dropdown' ? (
+                           (f.options && f.options.length <= 5) ? (
+                              <div className="flex flex-wrap gap-2">
+                                 {f.options.map((opt, idx) => (
+                                    <button key={idx} type="button" onClick={() => setSubmission({...submission, [f.label]: opt})} className={`px-4 py-2 rounded-sm text-xs font-bold uppercase tracking-wide border transition-all ${submission[f.label] === opt ? "bg-sky-800 text-white border-sky-800 shadow-sm" : "bg-white text-slate-500 border-slate-300 hover:border-sky-400 hover:text-sky-700"}`}>{opt}</button>
+                                 ))}
+                              </div>
+                           ) : (
+                             <div className="relative">
+                               <select className="w-full px-4 py-3 bg-white border border-slate-300 text-slate-900 text-sm rounded-sm focus:outline-none focus:border-sky-600 focus:ring-1 focus:ring-sky-600 transition-all appearance-none shadow-sm font-medium" required={f.required} value={submission[f.label] || ''} onChange={e => setSubmission({...submission, [f.label]: e.target.value})}>
+                                  <option value="">Select option...</option>
+                                  {f.options && f.options.map((opt, idx) => (<option key={idx} value={opt}>{opt}</option>))}
+                               </select>
+                               <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                             </div>
+                           )
+                        ) : f.type === 'checkbox' ? (
+                           <div className="flex flex-wrap gap-3 bg-slate-50 p-4 rounded-sm border border-slate-200">
+                              {f.options && f.options.map((opt, idx) => (
+                                 <label key={idx} className="flex items-center gap-2.5 text-xs font-bold text-slate-600 cursor-pointer hover:text-slate-900 bg-white px-3 py-2 rounded-sm border border-slate-200 shadow-sm transition-all hover:border-slate-400 uppercase tracking-wide">
+                                    <input type="checkbox" className="rounded-sm border-slate-300 text-sky-700 focus:ring-sky-600 w-4 h-4" checked={(submission[f.label] || []).includes(opt)} onChange={() => handleCheckboxChange(f.label, opt)} /> {opt}
+                                 </label>
+                              ))}
+                           </div>
+                        ) : (f.type === 'file' || f.type === 'image') ? (
+                           <div className="bg-slate-50 border-2 border-dashed border-slate-300 p-6 rounded-sm hover:bg-slate-100 hover:border-sky-400 transition-colors text-center h-full flex flex-col justify-center min-h-[120px]">
+                              {submission[f.label] ? (
+                                 <div className="flex flex-col items-center gap-2">
+                                   <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600"><FileCheck className="w-5 h-5" /></div>
+                                   <span className="text-xs font-bold text-emerald-700 uppercase">Document Securely Stored</span>
+                                   <button type="button" onClick={() => setSubmission({...submission, [f.label]: null})} className="text-[10px] text-red-500 hover:text-red-700 underline mt-1 font-bold uppercase">Remove</button>
+                                 </div>
+                              ) : (
+                                 <label className="flex flex-col items-center gap-2 cursor-pointer w-full h-full justify-center">
+                                    {uploading ? (
+                                      <><Loader2 className="w-8 h-8 text-sky-600 animate-spin" /><span className="text-xs text-sky-700 font-bold uppercase">Encrypting & Uploading...</span></>
+                                    ) : (
+                                      <><div className="w-10 h-10 bg-white rounded-full shadow-sm flex items-center justify-center text-slate-400 mb-1 border border-slate-200"><Upload className="w-5 h-5" /></div><span className="text-xs font-bold text-slate-500 uppercase">Upload Technical Doc</span><input type="file" className="hidden" accept={f.type === 'image' ? "image/*" : "*/*"} onChange={(e) => handleFileUpload(e.target.files[0], f.label)} disabled={uploading} /></>
+                                    )}
+                                 </label>
+                              )}
+                              {submission[f.label] && <input type="hidden" value={submission[f.label]} required={f.required} />}
+                           </div>
+                        ) : (
+                          <input type={f.type} className="w-full px-4 py-3 bg-white border border-slate-300 text-slate-900 text-sm rounded-sm focus:outline-none focus:border-sky-600 focus:ring-1 focus:ring-sky-600 transition-all shadow-sm placeholder-slate-400 font-medium" required={f.required} value={submission[f.label] || ''} onChange={e => setSubmission({...submission, [f.label]: e.target.value})} placeholder={`Enter ${f.label.toLowerCase()}...`} />
+                        )}
+                      </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="bg-slate-100 p-6 rounded-sm border border-slate-200 space-y-6">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Approving Authority (Dept)</label>
+                      <div className="relative">
+                        <select className="w-full px-4 py-3 bg-white border border-slate-300 text-slate-900 text-sm rounded-sm focus:outline-none focus:border-sky-600 shadow-sm appearance-none font-medium" value={targetDept} onChange={e => setTargetDept(e.target.value)} required>
+                          <option value="">Select Department...</option>
+                          {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                        </select>
+                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Cross-Functional Tags</label>
+                      <div className="flex flex-wrap gap-2">
+                        {departments.map(d => (
+                          <button type="button" key={d.id} onClick={() => toggleSubDept(d.name)} className={`px-3 py-1.5 rounded-sm text-[10px] font-bold border transition-all duration-200 uppercase tracking-wide ${subDepts.includes(d.name) ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-white text-slate-500 border-slate-300 hover:border-slate-400 hover:text-slate-800'}`}>{d.name}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
+                     <Button variant="ghost" onClick={() => { setActiveForm(null); setEditingIdeaId(null); setOriginalStatus(null); }}>Discard</Button>
+                     <Button variant="primary" type="submit" className="px-8 shadow-lg shadow-sky-900/20" disabled={uploading || isSubmitting}>
+                       {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingIdeaId ? "Submit Revision" : "Submit Proposal")}
+                     </Button>
+                  </div>
+                </form>
+            </Modal>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1848,562 +1170,142 @@ const EmployeePortal = ({ currentUser, showToast }) => {
 const ManagerPortal = ({ currentUser, showToast }) => {
   const [ideas, setIdeas] = useState([]);
   const [filter, setFilter] = useState('all');
-  const [kpis, setKpis] = useState([]); // Fetch KPIs for Manager
+  const [kpis, setKpis] = useState([]);
 
   useEffect(() => {
-    const unsub1 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), s => {
-      setIdeas(s.docs.map(d => ({id:d.id, ...d.data()})));
-    });
-    
-    // Fetch KPIs
-    const unsub2 = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.KPIS, 'config'), s => {
-      if (s.exists()) setKpis(s.data().list);
-      else setKpis(DEFAULT_KPIS);
-    });
-
+    const unsub1 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), s => { setIdeas(s.docs.map(d => ({id:d.id, ...d.data()}))); });
+    const unsub2 = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.KPIS, 'config'), s => { if (s.exists()) setKpis(s.data().list); else setKpis(DEFAULT_KPIS); });
     return () => { unsub1(); unsub2(); };
   }, []);
 
-  const handleStatus = useCallback(async (id, status) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
-      status, reviewedBy: currentUser.name, reviewedAt: new Date().toISOString()
-    });
-    showToast(`Proposal status updated: ${status}`);
-  }, [currentUser, showToast]);
-
-  const handleComment = useCallback(async (id, text) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
-      comments: arrayUnion({ 
-        id: Date.now(), 
-        author: currentUser.name, 
-        text, 
-        date: new Date().toISOString() 
-      })
-    });
-    showToast("Feedback recorded");
-  }, [currentUser, showToast]);
-
-  const handleUpdateComment = useCallback(async (ideaId, updatedComments) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, ideaId), {
-      comments: updatedComments
-    });
-    showToast("Comment updated");
-  }, [showToast]);
-
-  const handleTogglePublic = useCallback(async (id, isPublic) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
-      isPublic: isPublic
-    });
-    showToast(isPublic ? "Idea published to showcase" : "Idea unpublished");
-  }, [showToast]);
-
-  const handleRate = useCallback(async (id, ratingResult) => {
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
-       rating: ratingResult
-    });
-    showToast("Rating saved successfully.");
-  }, [showToast]);
-
+  const handleStatus = useCallback(async (id, status) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), { status, reviewedBy: currentUser.name, reviewedAt: new Date().toISOString() }); showToast(`Status updated: ${status}`); }, [currentUser, showToast]);
+  const handleComment = useCallback(async (id, text) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), { comments: arrayUnion({ id: Date.now(), author: currentUser.name, text, date: new Date().toISOString() }) }); showToast("Note recorded"); }, [currentUser, showToast]);
+  const handleUpdateComment = useCallback(async (ideaId, updatedComments) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, ideaId), { comments: updatedComments }); showToast("Note updated"); }, [showToast]);
+  const handleTogglePublic = useCallback(async (id, isPublic) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), { isPublic: isPublic }); showToast(isPublic ? "Added to Global Showcase" : "Removed from Global Showcase"); }, [showToast]);
+  const handleRate = useCallback(async (id, ratingResult) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), { rating: ratingResult }); showToast("Technical Evaluation saved."); }, [showToast]);
+  
   const myDeptIdeas = useMemo(() => ideas.filter(i => i.mainDepartment === currentUser.department), [ideas, currentUser]);
   const otherIdeas = useMemo(() => ideas.filter(i => i.mainDepartment !== currentUser.department), [ideas, currentUser]);
   const displayedIdeas = useMemo(() => filter === 'myDept' ? myDeptIdeas : [...myDeptIdeas, ...otherIdeas], [filter, myDeptIdeas, otherIdeas]);
 
+  // Dashboard Metrics
+  const activeCount = ideas.filter(i => i.status === STATUS.APPROVED).length;
+  const pendingCount = ideas.filter(i => i.status === STATUS.PENDING).length;
+  const safetyCount = ideas.filter(i => i.category?.includes('HSE') || i.formData["HSE Impact"]?.includes("Positive")).length;
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 mb-6">
+    <div className="space-y-8">
+      {/* Executive Dashboard */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+         <StatCard label="Active Projects" value={activeCount} subtext="Currently in implementation phase" icon={Activity} color="text-emerald-600 bg-emerald-50" />
+         <StatCard label="Pending Review" value={pendingCount} subtext="Awaiting technical approval" icon={Gauge} color="text-amber-600 bg-amber-50" />
+         <StatCard label="HSE Initiatives" value={safetyCount} subtext="Safety critical improvements" icon={Flame} color="text-red-600 bg-red-50" />
+      </div>
+
+      <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 border-b border-slate-200 pb-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">Executive Overview</h2>
-          <p className="text-slate-500">Review and approve operational proposals.</p>
+          <h2 className="text-xl font-bold text-slate-900 font-sans uppercase tracking-tight">Asset Management</h2>
+          <p className="text-slate-500 text-xs mt-1">Review, audit, and approve operational changes.</p>
         </div>
-        <div className="flex bg-white rounded-sm shadow-sm border border-slate-200 p-1">
-          <button onClick={() => setFilter('all')} className={`px-6 py-2 text-sm rounded-sm font-semibold transition-all ${filter === 'all' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-900'}`}>Global View</button>
-          <button onClick={() => setFilter('myDept')} className={`px-6 py-2 text-sm rounded-sm font-semibold transition-all ${filter === 'myDept' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-900'}`}>My Department</button>
+        <div className="flex bg-slate-100 rounded-sm p-1 border border-slate-200">
+          <button onClick={() => setFilter('all')} className={`px-4 py-1.5 text-xs rounded-sm font-bold uppercase tracking-wider transition-all ${filter === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}>Global View</button>
+          <button onClick={() => setFilter('myDept')} className={`px-4 py-1.5 text-xs rounded-sm font-bold uppercase tracking-wider transition-all ${filter === 'myDept' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}>My Department</button>
         </div>
       </div>
 
       <div className="space-y-4">
-        {displayedIdeas.map(idea => (
-          <IdeaCard 
-            key={idea.id} 
-            idea={idea} 
-            isManager={true} 
-            canApprove={idea.mainDepartment === currentUser.department} 
-            onStatus={handleStatus} 
-            onComment={handleComment} 
-            onUpdateComment={handleUpdateComment}
-            onTogglePublic={handleTogglePublic}
-            currentUser={currentUser}
-            onRate={handleRate} // Pass rating handler
-            kpis={kpis} // Pass KPIs
-          />
-        ))}
-        {displayedIdeas.length === 0 && (
-          <div className="p-12 text-center border-2 border-dashed border-slate-300 rounded-sm">
-             <div className="text-slate-400 font-medium">No pending proposals found in this view.</div>
-          </div>
-        )}
+        {displayedIdeas.map(idea => (<IdeaCard key={idea.id} idea={idea} isManager={true} canApprove={idea.mainDepartment === currentUser.department} onStatus={handleStatus} onComment={handleComment} onUpdateComment={handleUpdateComment} onTogglePublic={handleTogglePublic} currentUser={currentUser} onRate={handleRate} kpis={kpis} />))}
+        {displayedIdeas.length === 0 && (<div className="p-16 text-center border-2 border-dashed border-slate-300 rounded-sm bg-slate-50"><div className="text-slate-400 font-bold uppercase tracking-widest text-xs">No pending items in queue.</div></div>)}
       </div>
     </div>
   );
 };
 
 const GuestAuth = ({ onAccess }) => {
-  const [email, setEmail] = useState('');
-  const [status, setStatus] = useState('init'); // init, pending, approved
-
-  const checkAccess = async (e) => {
-    e.preventDefault();
-    // Check if guest exists
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS), where('email', '==', email));
-    const snap = await getDocs(q);
-
-    if (snap.empty) {
-      // Request Access
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS), { 
-        email, status: STATUS.PENDING, requestedAt: new Date().toISOString() 
-      });
-      setStatus('pending');
-    } else {
-      const guest = snap.docs[0].data();
-      if (guest.status === STATUS.APPROVED) {
-        onAccess(email);
-      } else {
-        setStatus('pending');
-      }
-    }
-  };
-
-  if (status === 'pending') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-        <Card className="w-full max-w-md p-8 text-center">
-          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Lock className="w-8 h-8 text-amber-600" />
-          </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Access Pending</h2>
-          <p className="text-slate-500 mb-6">Your request has been sent to the administrator. Please wait for approval.</p>
-          <Button variant="secondary" onClick={() => window.location.reload()}>Check Again</Button>
-        </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
-      <Card className="w-full max-w-md p-8">
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Secure Report Access</h2>
-        <p className="text-slate-500 mb-6">Please enter your email to view this confidential report.</p>
-        <form onSubmit={checkAccess} className="space-y-4">
-          <Input label="Email Address" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
-          <Button variant="primary" type="submit" className="w-full h-12">View Report</Button>
-        </form>
-      </Card>
-    </div>
-  );
+  const [email, setEmail] = useState(''); const [status, setStatus] = useState('init');
+  const checkAccess = async (e) => { e.preventDefault(); const q = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS), where('email', '==', email)); const snap = await getDocs(q); if (snap.empty) { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GUESTS), { email, status: STATUS.PENDING, requestedAt: new Date().toISOString() }); setStatus('pending'); } else { const guest = snap.docs[0].data(); if (guest.status === STATUS.APPROVED) onAccess(email); else setStatus('pending'); }};
+  if (status === 'pending') return (<div className="min-h-screen flex items-center justify-center bg-slate-200 p-4"><Card className="w-full max-w-md p-10 text-center border-t-4 border-t-amber-500 shadow-xl"><div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6"><Lock className="w-8 h-8 text-amber-600" /></div><h2 className="text-xl font-bold text-slate-900 mb-2 uppercase tracking-wide">Access Restricted</h2><p className="text-slate-500 mb-8 text-sm">Your security clearance is pending administrative approval.</p><Button variant="secondary" onClick={() => window.location.reload()}>Refresh Status</Button></Card></div>);
+  return (<div className="min-h-screen flex items-center justify-center bg-slate-900 p-4"><Card className="w-full max-w-md p-10 shadow-2xl border-t-4 border-t-sky-600"><h2 className="text-2xl font-bold text-slate-900 mb-2 font-sans">Secure Portal Access</h2><p className="text-slate-500 mb-8 text-sm">Enter authorized email to view confidential asset data.</p><form onSubmit={checkAccess} className="space-y-6"><Input label="Corporate Email" type="email" value={email} onChange={e => setEmail(e.target.value)} required /><Button variant="primary" type="submit" className="w-full h-12 text-sm">Authenticate</Button></form></Card></div>);
 };
 
 const GuestView = ({ ideaId }) => {
-  const [idea, setIdea] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [aiAnalysis, setAiAnalysis] = useState(null);
-
-  useEffect(() => {
-    const fetchIdea = async () => {
-      const docRef = doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, ideaId);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        setIdea(data);
-        
-        // Auto-generate AI analysis for guest view if not already there
-        const content = Object.entries(data.formData).map(([k,v]) => `${k}: ${v}`).join('\n');
-        const prompt = `Act as an executive business analyst. Provide a very brief (2-3 sentences) executive summary of this proposal titled "${data.formTitle}":\n\n${content}`;
-        callGemini(prompt).then(text => setAiAnalysis(text));
-      }
-      setLoading(false);
-    };
-    fetchIdea();
-  }, [ideaId]);
-
-  const isImage = (url) => {
-    return url.match(/\.(jpeg|jpg|gif|png)$/) != null || url.includes('drive.google.com') === false; 
-  };
-
-  const handlePrint = async () => {
-    setIsGenerating(true);
-    await generatePDF(idea, aiAnalysis);
-    setIsGenerating(false);
-  };
-
-  if (loading) return <LoadingScreen message="Loading Report..." />;
-  if (!idea) return <div className="text-center p-20 text-slate-500">Report not found or access denied.</div>;
-
-  return (
-    <div className="min-h-screen bg-white font-sans text-slate-900 print:bg-white">
-      <div className="max-w-4xl mx-auto px-6 py-12 print:px-0 print:py-0">
-        <div className="mb-12 border-b border-slate-200 pb-8 print:border-none print:mb-6">
-          <div className="flex justify-between items-start mb-6">
-             <img src="./logo.jpg" alt="Logo" className="w-16 h-16 object-cover rounded-sm" />
-             <div className="text-right">
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Confidential Report</div>
-                <div className="text-sm font-medium text-slate-600">{new Date(idea.submittedAt).toLocaleDateString()}</div>
-             </div>
-          </div>
-          <h1 className="text-4xl font-extrabold text-slate-900 leading-tight mb-4">{idea.formTitle}</h1>
-          <div className="flex items-center gap-4 text-sm text-slate-500 print:hidden">
-            <span className="flex items-center gap-1"><Users className="w-4 h-4" /> {idea.employeeName}</span>
-            <span>•</span>
-            <span className="uppercase tracking-wide font-bold text-xs">{idea.mainDepartment}</span>
-          </div>
-        </div>
-
-        {aiAnalysis && (
-          <div className="mb-12 bg-slate-50 p-6 rounded border border-slate-100">
-            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-indigo-500" /> Executive Summary
-            </h3>
-            <p className="text-slate-700 leading-relaxed text-sm">{aiAnalysis}</p>
-          </div>
-        )}
-
-        <div className="space-y-12 print:space-y-6">
-          {Object.entries(idea.formData).map(([k, v]) => (
-            <div key={k} className="break-inside-avoid">
-              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">{k}</h3>
-              {v.startsWith('http') ? (
-                 // Check if image or file link
-                 isImage(v) || v.includes('googleusercontent') ? (
-                    <img src={getDirectLink(v)} alt="Attachment" className="w-full rounded-lg shadow-md border border-slate-100 print:shadow-none" crossorigin="anonymous" />
-                 ) : (
-                    <a href={v} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-blue-600 hover:underline bg-blue-50 px-4 py-3 rounded-md border border-blue-100 print:hidden">
-                       <Paperclip className="w-5 h-5" /> View Attached Document
-                    </a>
-                 )
-              ) : (
-                 <div className="text-lg leading-relaxed text-slate-800 whitespace-pre-wrap">{v}</div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-16 pt-8 border-t border-slate-200 text-center text-slate-400 text-xs uppercase tracking-widest print:hidden">
-           Generated by Idea Bank System • {new Date().getFullYear()}
-        </div>
-
-        {/* Floating Print Button for Guest */}
-        <div className="fixed bottom-8 right-8 print:hidden">
-          <Button onClick={handlePrint} disabled={isGenerating} className="shadow-xl rounded-full w-14 h-14 flex items-center justify-center p-0 bg-slate-900 hover:bg-slate-800">
-            {isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <FileDown className="w-6 h-6" />}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
+  const [idea, setIdea] = useState(null); const [loading, setLoading] = useState(true); const [isGenerating, setIsGenerating] = useState(false); const [aiAnalysis, setAiAnalysis] = useState(null);
+  useEffect(() => { const fetchIdea = async () => { const docRef = doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, ideaId); const snap = await getDoc(docRef); if (snap.exists()) { const data = snap.data(); setIdea(data); const content = Object.entries(data.formData).map(([k,v]) => `${k}: ${v}`).join('\n'); const prompt = `Act as an executive business analyst. Provide a very brief (2-3 sentences) executive summary of this proposal titled "${data.formTitle}":\n\n${content}`; callGemini(prompt).then(text => setAiAnalysis(text)); } setLoading(false); }; fetchIdea(); }, [ideaId]);
+  const isImage = (url) => url.match(/\.(jpeg|jpg|gif|png)$/) != null || url.includes('drive.google.com') === false; 
+  const handlePrint = async () => { setIsGenerating(true); await generatePDF(idea, aiAnalysis); setIsGenerating(false); };
+  if (loading) return <LoadingScreen message="Retrieving Encrypted Data..." />;
+  if (!idea) return <div className="text-center p-20 text-slate-500 font-bold uppercase tracking-widest">Data Unavailable or Access Denied.</div>;
+  return (<div className="min-h-screen bg-slate-100 font-sans text-slate-900 print:bg-white"><div className="max-w-5xl mx-auto px-8 py-12 print:px-0 print:py-0"><div className="bg-white p-10 rounded-sm shadow-xl border-t-4 border-t-sky-800 print:shadow-none print:border-none"><div className="mb-10 border-b-2 border-slate-900 pb-6 print:mb-6"><div className="flex justify-between items-start mb-6"><div className="flex items-center gap-3"><div className="p-2 bg-slate-900"><Flame className="w-8 h-8 text-white" /></div><div><h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">EPROM</h1><span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 block mt-1">Operational Excellence</span></div></div><div className="text-right"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Confidential Internal Document</div><div className="text-sm font-mono text-slate-600">{new Date(idea.submittedAt).toLocaleDateString()}</div></div></div><h1 className="text-4xl font-black text-slate-900 leading-tight mb-4 tracking-tight">{idea.formTitle}</h1><div className="flex items-center gap-6 text-sm text-slate-500 print:hidden font-medium"><span className="flex items-center gap-2"><HardHat className="w-4 h-4 text-sky-700" /> {idea.employeeName}</span><span className="text-slate-300">|</span><span className="uppercase tracking-wide font-bold text-xs bg-slate-100 px-2 py-1 rounded-sm">{idea.mainDepartment}</span></div></div>{aiAnalysis && (<div className="mb-10 bg-slate-50 p-8 rounded-sm border-l-4 border-sky-600"><h3 className="text-xs font-bold text-sky-800 uppercase tracking-widest mb-3 flex items-center gap-2"><BrainCircuit className="w-4 h-4" /> Executive Summary</h3><p className="text-slate-800 leading-relaxed text-sm font-medium">{aiAnalysis}</p></div>)}<div className="space-y-12 print:space-y-8">{Object.entries(idea.formData).map(([k, v]) => (<div key={k} className="break-inside-avoid"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-200 pb-1">{k}</h3>{v.startsWith('http') ? (isImage(v) || v.includes('googleusercontent') ? (<img src={getDirectLink(v)} alt="Attachment" className="w-full rounded-sm shadow-md border border-slate-200 print:shadow-none" crossorigin="anonymous" />) : (<a href={v} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sky-800 hover:underline bg-sky-50 px-6 py-4 rounded-sm border border-sky-100 print:hidden font-bold uppercase text-xs tracking-wide"><Paperclip className="w-4 h-4" /> View Technical Attachment</a>)) : (<div className="text-base leading-relaxed text-slate-800 whitespace-pre-wrap font-serif">{v}</div>)}</div>))}</div><div className="mt-20 pt-8 border-t border-slate-200 text-center text-slate-400 text-[10px] uppercase tracking-[0.2em] print:hidden">Generated by EPROM Innovation Hub • ISO 9001:2015 Compliant</div></div><div className="fixed bottom-8 right-8 print:hidden"><Button onClick={handlePrint} disabled={isGenerating} className="shadow-2xl rounded-full w-16 h-16 flex items-center justify-center p-0 bg-slate-900 hover:bg-slate-800 border-4 border-slate-100">{isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Printer className="w-6 h-6" />}</Button></div></div></div>);
 };
 
 const LoginPage = ({ onLogin, onGoRegister }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [imgError, setImgError] = useState(false);
-
-  return (
-    <div className="min-h-screen flex">
-      <div className="hidden lg:flex w-1/2 bg-slate-900 relative flex-col justify-between">
-        <InnovationCarousel variant="full" />
-      </div>
-
-      <div className="w-full lg:w-1/2 bg-white flex items-center justify-center p-8">
-        <div className="w-full max-w-md">
-          <div className="mb-10 lg:hidden text-center">
-             {!imgError ? (
-              <img 
-                src="./logo.jpg" 
-                alt="Logo" 
-                onError={() => setImgError(true)}
-                className="w-24 h-24 rounded-sm mx-auto mb-4 border border-slate-200 object-cover" 
-              />
-             ) : null}
-            <h2 className="text-2xl font-bold text-slate-900">Idea Bank</h2>
-          </div>
-
-          <div className="mb-8">
-            <h2 className="text-3xl font-bold text-slate-900 mb-2">Sign In</h2>
-            <p className="text-slate-500">Access your dashboard using your company credentials.</p>
-          </div>
-
-          <form onSubmit={(e) => { e.preventDefault(); onLogin(email, password); }} className="space-y-4">
-            <Input label="Corporate Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            <Button variant="primary" type="submit" className="w-full h-12 text-base mt-2">AuthenticatE</Button>
-          </form>
-
-          <div className="mt-8 text-center">
-            <p className="text-slate-500 text-sm mb-4">Don't have access yet?</p>
-            <Button variant="secondary" onClick={onGoRegister} className="w-full">Request Account Setup</Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); 
+  return (<div className="min-h-screen flex font-sans"><div className="hidden lg:flex w-1/2 bg-slate-900 relative flex-col justify-between"><InnovationCarousel variant="full" /></div><div className="w-full lg:w-1/2 bg-slate-50 flex items-center justify-center p-8"><div className="w-full max-w-md bg-white p-12 rounded-sm shadow-2xl border-t-8 border-sky-800"><div className="mb-10 lg:hidden text-center"><div className="w-16 h-16 bg-slate-900 rounded-sm mx-auto mb-4 flex items-center justify-center"><Flame className="w-8 h-8 text-white" /></div><h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">EPROM</h2></div><div className="mb-10"><h2 className="text-2xl font-bold text-slate-900 mb-2">Portal Access</h2><p className="text-slate-500 text-sm">Authorized personnel only. Please verify credentials.</p></div><form onSubmit={(e) => { e.preventDefault(); onLogin(email, password); }} className="space-y-6"><Input label="Corporate ID / Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /><Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /><Button variant="primary" type="submit" className="w-full h-12 text-sm">Secure Login</Button></form><div className="mt-8 text-center pt-6 border-t border-slate-100"><p className="text-slate-400 text-xs mb-4 uppercase tracking-wide font-bold">New Personnel?</p><Button variant="secondary" onClick={onGoRegister} className="w-full h-10 text-xs">Register for Access</Button></div></div></div></div>);
 };
 
 const RegisterPage = ({ onRegister, onBack }) => {
   const [form, setForm] = useState({ name: '', email: '', password: '' });
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-      <Card className="w-full max-w-lg p-8 md:p-10 shadow-lg border-t-4 border-t-slate-900">
-        <div className="mb-8">
-           <h2 className="text-2xl font-bold text-slate-900">Request Access</h2>
-           <p className="text-slate-500 mt-1">Fill in your details for administrative approval.</p>
-        </div>
-        <form onSubmit={(e) => { e.preventDefault(); onRegister(form); }} className="space-y-4">
-          <Input label="Full Legal Name" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} required />
-          <Input label="Corporate Email" type="email" value={form.email} onChange={(e) => setForm({...form, email: e.target.value})} required />
-          <Input label="Set Password" type="password" value={form.password} onChange={(e) => setForm({...form, password: e.target.value})} required />
-          
-          <div className="pt-6 flex gap-4">
-            <Button variant="ghost" onClick={onBack} className="flex-1">Cancel</Button>
-            <Button variant="primary" type="submit" className="flex-1">Submit Request</Button>
-          </div>
-        </form>
-      </Card>
-    </div>
-  );
+  return (<div className="min-h-screen flex items-center justify-center bg-slate-200 p-4 font-sans"><Card className="w-full max-w-lg p-12 shadow-2xl border-t-8 border-slate-900"><div className="mb-10"><h2 className="text-2xl font-bold text-slate-900 uppercase tracking-tight">Personnel Registration</h2><p className="text-slate-500 mt-2 text-sm">Submit details for IT Department clearance.</p></div><form onSubmit={(e) => { e.preventDefault(); onRegister(form); }} className="space-y-6"><Input label="Full Name" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} required /><Input label="Corporate Email" type="email" value={form.email} onChange={(e) => setForm({...form, email: e.target.value})} required /><Input label="Create Password" type="password" value={form.password} onChange={(e) => setForm({...form, password: e.target.value})} required /><div className="pt-8 flex gap-4"><Button variant="ghost" onClick={onBack} className="flex-1">Cancel</Button><Button variant="primary" type="submit" className="flex-1">Submit Application</Button></div></form></Card></div>);
 };
-
-// --- Main App Component ---
 
 export default function IdeaBankApp() {
   const [authUser, setAuthUser] = useState(null);
-  const [authReady, setAuthReady] = useState(false); // New state to block UI until auth is confirmed
+  const [authReady, setAuthReady] = useState(false); 
   const [currentUser, setCurrentUser] = useState(null);
   const [view, setView] = useState('login'); 
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [sharedIdeaId, setSharedIdeaId] = useState(null);
 
-  // Helper to retry auth calls with backoff
-  const retryOperation = async (fn, retries = 3, delay = 1000) => {
-    try {
-      return await fn();
-    } catch (error) {
-      if (retries > 0) {
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return retryOperation(fn, retries - 1, delay * 2);
-      }
-      throw error;
-    }
-  };
-
+  const retryOperation = async (fn, retries = 3, delay = 1000) => { try { return await fn(); } catch (error) { if (retries > 0) { await new Promise(resolve => setTimeout(resolve, delay)); return retryOperation(fn, retries - 1, delay * 2); } throw error; } };
   useEffect(() => {
-    // Inject PDF Library
-    const script = document.createElement('script');
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
-    script.async = true;
-    document.body.appendChild(script);
-
+    const script = document.createElement('script'); script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"; script.async = true; document.body.appendChild(script);
     const initAuth = async () => {
-      // Check for shared link in URL
-      const params = new URLSearchParams(window.location.search);
-      const shareId = params.get('share');
-      if (shareId) {
-        setSharedIdeaId(shareId);
-        // Even with share link, we don't set view yet, wait for authReady
-      }
-
-      // Robust Auth Initialization with Retry Logic
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          try {
-            await retryOperation(() => signInWithCustomToken(auth, __initial_auth_token));
-          } catch (e) {
-            console.error("Custom token auth failed, falling back to anonymous", e);
-            await retryOperation(() => signInAnonymously(auth));
-          }
-        } else {
-          await retryOperation(() => signInAnonymously(auth));
-        }
-      } catch (e) {
-        console.error("All auth attempts failed", e);
-        // Even if auth fails, we stop the "loading" spinner so user sees an error or fallback
-        setLoading(false);
-      }
+      const params = new URLSearchParams(window.location.search); const shareId = params.get('share'); if (shareId) setSharedIdeaId(shareId);
+      try { if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) { try { await retryOperation(() => signInWithCustomToken(auth, __initial_auth_token)); } catch (e) { await retryOperation(() => signInAnonymously(auth)); } } else { await retryOperation(() => signInAnonymously(auth)); } } catch (e) { console.error("All auth attempts failed", e); setLoading(false); }
     };
-
-    // Listen for Auth State Changes
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setAuthUser(user);
-      setAuthReady(!!user); // Mark auth as ready only when user object is present
-      
+      setAuthUser(user); setAuthReady(!!user); 
       if (user) {
-        // If we have a shared link, navigate there now that auth is ready
-        const params = new URLSearchParams(window.location.search);
-        const shareId = params.get('share');
-        if (shareId) {
-           setView('guest_auth'); // Or direct to guest view logic
-        } else {
-           // Only restore session if not in share mode
-           const storedUid = localStorage.getItem('ideabank_uid');
-           if (storedUid) {
-             if (storedUid === 'admin-master') {
-                setCurrentUser({ ...DEFAULT_ADMIN, id: 'admin-master' });
-                setView(ROLES.ADMIN);
-             } else {
-                try {
-                  const userSnap = await getDocs(query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS), where('__name__', '==', storedUid))); 
-                  if (!userSnap.empty) {
-                     const userData = { id: userSnap.docs[0].id, ...userSnap.docs[0].data() };
-                     setCurrentUser(userData);
-                     setView(userData.role);
-                  }
-                } catch (e) {
-                  console.error("Session restore failed", e);
-                  localStorage.removeItem('ideabank_uid');
-                }
-             }
-           }
-        }
-        setLoading(false);
+        const params = new URLSearchParams(window.location.search); const shareId = params.get('share');
+        if (shareId) { setView('guest_auth'); } else { const storedUid = localStorage.getItem('ideabank_uid'); if (storedUid) { if (storedUid === 'admin-master') { setCurrentUser({ ...DEFAULT_ADMIN, id: 'admin-master' }); setView(ROLES.ADMIN); } else { try { const userSnap = await getDocs(query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS), where('__name__', '==', storedUid))); if (!userSnap.empty) { const userData = { id: userSnap.docs[0].id, ...userSnap.docs[0].data() }; setCurrentUser(userData); setView(userData.role); } } catch (e) { localStorage.removeItem('ideabank_uid'); } } } } setLoading(false);
       }
     });
-
-    initAuth();
-    return () => unsubscribe();
+    initAuth(); return () => unsubscribe();
   }, []);
 
-  const showToast = useCallback((message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  }, []);
-
-  const handleLogin = async (email, password) => {
-    setLoading(true);
-    try {
-      if (email === DEFAULT_ADMIN.email && password === DEFAULT_ADMIN.password) {
-        const adminUser = { ...DEFAULT_ADMIN, id: 'admin-master' };
-        setCurrentUser(adminUser);
-        setView(ROLES.ADMIN); 
-        localStorage.setItem('ideabank_uid', 'admin-master'); 
-        setLoading(false);
-        return;
-      }
-
-      const q = query(
-        collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS),
-        where('email', '==', email),
-        where('password', '==', password)
-      );
-      
-      const snapshot = await getDocs(q);
-      
-      if (snapshot.empty) throw new Error("Invalid email or password.");
-      
-      const userData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
-
-      if (userData.status !== STATUS.APPROVED) throw new Error("Account pending approval.");
-      
-      setCurrentUser(userData);
-      setView(userData.role);
-      localStorage.setItem('ideabank_uid', userData.id);
-
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null); 
-    setView('login');
-    localStorage.removeItem('ideabank_uid');
-  };
-
-  const handleRegister = async (data) => {
-    try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS), {
-        ...data,
-        role: 'unassigned', 
-        status: STATUS.PENDING,
-        createdAt: new Date().toISOString()
-      });
-      showToast("Request submitted to System Admin.", "success");
-      setView('login');
-    } catch (err) {
-      showToast("Registration failed", "error");
-    }
-  };
-
-  // Force loading until Auth is definitely ready (anonymous or signed in)
-  if (loading || !authReady) return <LoadingScreen message="Establishing Secure Connection..." onRetry={() => window.location.reload()} />;
-
-  // Special Routes
+  const showToast = useCallback((message, type = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000); }, []);
+  const handleLogin = async (email, password) => { setLoading(true); try { if (email === DEFAULT_ADMIN.email && password === DEFAULT_ADMIN.password) { const adminUser = { ...DEFAULT_ADMIN, id: 'admin-master' }; setCurrentUser(adminUser); setView(ROLES.ADMIN); localStorage.setItem('ideabank_uid', 'admin-master'); setLoading(false); return; } const q = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS), where('email', '==', email), where('password', '==', password)); const snapshot = await getDocs(q); if (snapshot.empty) throw new Error("Invalid email or password."); const userData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }; if (userData.status !== STATUS.APPROVED) throw new Error("Account pending approval."); setCurrentUser(userData); setView(userData.role); localStorage.setItem('ideabank_uid', userData.id); } catch (err) { showToast(err.message, 'error'); } finally { setLoading(false); } };
+  const handleLogout = () => { setCurrentUser(null); setView('login'); localStorage.removeItem('ideabank_uid'); };
+  const handleRegister = async (data) => { try { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS), { ...data, role: 'unassigned', status: STATUS.PENDING, createdAt: new Date().toISOString() }); showToast("Application submitted for approval.", "success"); setView('login'); } catch (err) { showToast("Registration failed", "error"); } };
+  if (loading || !authReady) return <LoadingScreen />;
   if (view === 'guest_auth') return <GuestAuth onAccess={() => setView('guest_view')} />;
   if (view === 'guest_view') return <GuestView ideaId={sharedIdeaId} />;
-  
-  // Note: 'showcase' view is removed as requested, replaced by the Carousel
-
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-slate-200">
-      {toast && (
-        <div className={`fixed top-6 right-6 z-50 px-6 py-4 rounded-sm shadow-lg border-l-4 text-sm font-medium animate-fade-in ${toast.type === 'error' ? 'bg-white border-red-600 text-red-700' : 'bg-white border-emerald-600 text-emerald-700'}`}>
-          {toast.message}
-        </div>
-      )}
-
-      {view === 'login' && (
-        <div className="relative">
-          <LoginPage onLogin={handleLogin} onGoRegister={() => setView('register')} />
-        </div>
-      )}
-      
+    <div className="min-h-screen bg-slate-100 text-slate-800 font-sans selection:bg-sky-200">
+      {toast && (<div className={`fixed top-6 right-6 z-50 px-6 py-4 rounded-sm shadow-2xl border-l-4 text-sm font-bold tracking-wide animate-fade-in uppercase ${toast.type === 'error' ? 'bg-white border-red-600 text-red-800' : toast.type === 'ai' ? 'bg-white border-indigo-600 text-indigo-800' : 'bg-white border-emerald-600 text-emerald-800'}`}>{toast.type === 'ai' && <BrainCircuit className="w-4 h-4 inline-block mr-2 text-indigo-600" />}{toast.message}</div>)}
+      {view === 'login' && (<div className="relative"><LoginPage onLogin={handleLogin} onGoRegister={() => setView('register')} /></div>)}
       {view === 'register' && <RegisterPage onRegister={handleRegister} onBack={() => setView('login')} />}
-      
       {currentUser && (
         <div className="flex flex-col h-screen overflow-hidden">
-          {/* Top Enterprise Header */}
-          <header className="bg-slate-900 text-white h-16 flex-none z-40 shadow-md">
-            <div className="flex items-center justify-between h-full px-6">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="bg-white p-0.5 rounded-sm">
-                    <img 
-                      src="./logo.jpg" 
-                      alt="Logo" 
-                      onError={(e) => { e.target.onerror = null; e.target.src = ''; e.target.style.display = 'none'; }}
-                      className="w-10 h-10 rounded-sm object-cover" 
-                    />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-bold text-lg leading-none tracking-tight">IDEA BANK</span>
-                    <span className="text-[10px] text-slate-400 uppercase tracking-widest">Enterprise Innovation</span>
-                  </div>
-                </div>
-                <div className="h-6 w-px bg-slate-700 mx-2"></div>
-                <span className="text-xs font-bold bg-slate-800 text-slate-300 px-3 py-1 rounded-full uppercase tracking-wide">
-                  {currentUser.role} Portal
-                </span>
-              </div>
-              
+          <header className="bg-slate-900 text-white h-16 flex-none z-40 shadow-xl border-b-4 border-sky-700">
+            <div className="flex items-center justify-between h-full px-8">
               <div className="flex items-center gap-6">
-                <div className="text-right hidden md:block">
-                  <div className="text-sm font-medium text-white">{currentUser.name}</div>
-                  <div className="text-xs text-slate-400">{currentUser.department || 'System Admin'}</div>
+                <div className="flex items-center gap-3">
+                  <div className="bg-white p-1 rounded-sm"><Flame className="w-6 h-6 text-slate-900" /></div>
+                  <div className="flex flex-col"><span className="font-black text-xl leading-none tracking-tighter">EPROM</span><span className="text-[9px] text-sky-400 uppercase tracking-[0.2em] font-bold">Innovation Hub</span></div>
                 </div>
-                <Button variant="ghost" onClick={handleLogout} className="text-slate-400 hover:text-white hover:bg-slate-800">
-                  <LogOut className="w-5 h-5" />
-                </Button>
+                <div className="h-8 w-px bg-slate-700 mx-2"></div>
+                <span className="text-[10px] font-bold bg-slate-800 text-sky-400 px-3 py-1 rounded-full uppercase tracking-widest border border-slate-700">{currentUser.role} View</span>
+              </div>
+              <div className="flex items-center gap-8">
+                <div className="text-right hidden md:block"><div className="text-sm font-bold text-white uppercase tracking-wide">{currentUser.name}</div><div className="text-[10px] text-slate-400 font-mono">{currentUser.department || 'Administrator'}</div></div><Button variant="ghost" onClick={handleLogout} className="text-slate-400 hover:text-white hover:bg-slate-800"><LogOut className="w-5 h-5" /></Button>
               </div>
             </div>
           </header>
-
-          {/* Main Dashboard Area */}
-          <main className="flex-1 overflow-auto bg-slate-100 p-6 md:p-8">
+          <main className="flex-1 overflow-auto bg-slate-200 p-6 md:p-10">
             <div className="max-w-7xl mx-auto">
-              <div className="mb-8">
-                 <InnovationCarousel variant="banner" />
-              </div>
+              <div className="mb-8 shadow-2xl rounded-sm overflow-hidden"><InnovationCarousel variant="banner" /></div>
               {view === ROLES.ADMIN && <AdminPortal showToast={showToast} />}
               {view === ROLES.MANAGER && <ManagerPortal currentUser={currentUser} showToast={showToast} />}
               {view === ROLES.EMPLOYEE && <EmployeePortal currentUser={currentUser} showToast={showToast} />}
