@@ -118,15 +118,38 @@ const generatePDF = (idea) => {
 
       <div style="margin-bottom: 30px;">
         ${Object.entries(idea.formData).map(([k, v]) => {
-          const isImg = v.toString().includes('drive.google.com') || v.toString().match(/\.(jpeg|jpg|gif|png)$/);
+          const valStr = v ? v.toString() : '';
+          const isUrl = valStr.startsWith('http');
+          // Heuristic to check if it might be an image we can display
+          const isLikelyImage = isUrl && (valStr.match(/\.(jpeg|jpg|gif|png)$/i) || valStr.includes('googleusercontent') || valStr.includes('drive.google.com'));
+          
+          let contentHtml = '';
+          
+          if (isUrl) {
+             // Always show a clickable link for URLs in PDF
+             contentHtml = `
+               <div style="margin-bottom: 10px;">
+                 <a href="${valStr}" target="_blank" style="color: #2563eb; text-decoration: underline; font-size: 14px; word-break: break-all; display: inline-flex; align-items: center;">
+                   View Attachment / Link 🔗
+                 </a>
+               </div>
+             `;
+             
+             // If it's an image, also show the preview
+             if (isLikelyImage) {
+                const imgSrc = getDirectLink(valStr);
+                contentHtml += `
+                  <img src="${imgSrc}" style="max-width: 100%; max-height: 400px; border-radius: 4px; border: 1px solid #e2e8f0; display: block; margin: 10px 0;" crossorigin="anonymous" onerror="this.style.display='none'" />
+                `;
+             }
+          } else {
+             contentHtml = `<div style="font-size: 16px; line-height: 1.6; color: #334155; white-space: pre-wrap;">${valStr}</div>`;
+          }
+
           return `
             <div style="margin-bottom: 25px; page-break-inside: avoid;">
               <h3 style="font-size: 14px; font-weight: bold; color: #475569; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">${k}</h3>
-              ${isImg ? 
-                `<img src="${getDirectLink(v)}" style="max-width: 100%; max-height: 400px; border-radius: 4px; border: 1px solid #e2e8f0; display: block; margin: 10px 0;" crossorigin="anonymous" />` 
-                : 
-                `<div style="font-size: 16px; line-height: 1.6; color: #334155; white-space: pre-wrap;">${v}</div>`
-              }
+              ${contentHtml}
             </div>
           `;
         }).join('')}
@@ -258,7 +281,7 @@ const IdeaCard = React.memo(({ idea, isManager, canApprove, onStatus, onComment,
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [tempCommentText, setTempCommentText] = useState('');
 
-  // Smart URL/Image Detection
+  // Helper to detect if a string is a URL
   const isUrl = (str) => {
     try { return Boolean(new URL(str)); } catch(e){ return false; }
   };
