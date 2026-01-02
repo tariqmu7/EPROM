@@ -27,7 +27,7 @@ const firebaseConfig = {
   measurementId: "G-X5GVRLDBQQ"
 };
 
-// 2. Google Apps Script Web App URL (PASTE YOUR DEPLOYED SCRIPT URL HERE)
+// 2. Google Apps Script Web App URL
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbywVx70i2DXMf90cuMkE84Jn3rNlIr6dQJwXdoVx7l9kzzSXU-9uxn1MnrbWnJRRu6b/exec"; 
 
 // Initialize Firebase
@@ -69,7 +69,7 @@ const DEFAULT_ADMIN = {
   status: STATUS.APPROVED
 };
 
-// --- Helper Components ---
+// --- Helper Components (Primitives) ---
 
 const Button = ({ children, onClick, variant = 'primary', className = '', type = 'button', disabled = false }) => {
   const baseStyle = "px-5 py-2.5 text-sm font-semibold tracking-wide transition-colors duration-200 flex items-center justify-center gap-2 rounded-sm focus:outline-none focus:ring-2 focus:ring-offset-2";
@@ -127,7 +127,6 @@ const Badge = ({ status }) => {
   );
 };
 
-// Modal Component
 const Modal = ({ isOpen, onClose, title, children }) => {
   if (!isOpen) return null;
   return (
@@ -147,266 +146,263 @@ const Modal = ({ isOpen, onClose, title, children }) => {
   );
 };
 
-// --- Main App Component ---
+// --- Shared Components (Defined BEFORE Portals to fix ReferenceError) ---
 
-export default function IdeaBankApp() {
-  const [authUser, setAuthUser] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [view, setView] = useState('login'); 
-  const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState(null);
-  const [imgError, setImgError] = useState(false);
+const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, isEmployeeView }) => {
+  const [comment, setComment] = useState('');
+  const [showModal, setShowModal] = useState(false);
 
-  useEffect(() => {
-    const initAuth = async () => {
-      await signInAnonymously(auth);
-    };
-    initAuth();
-    
-    return onAuthStateChanged(auth, (user) => {
-      setAuthUser(user);
-      if (!user) setLoading(false);
-    });
-  }, []);
-
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+  // Helper to detect if a string is a URL (simple check)
+  const isUrl = (str) => {
+    try { return Boolean(new URL(str)); } catch(e){ return false; }
   };
-
-  const handleLogin = async (email, password, requestedRole) => {
-    setLoading(true);
-    try {
-      if (email === DEFAULT_ADMIN.email && password === DEFAULT_ADMIN.password) {
-        if (requestedRole !== ROLES.ADMIN) throw new Error("Invalid portal for these credentials.");
-        setCurrentUser({ ...DEFAULT_ADMIN, id: 'admin-master' });
-        setView('admin');
-        setLoading(false);
-        return;
-      }
-
-      const q = query(
-        collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS),
-        where('email', '==', email),
-        where('password', '==', password)
-      );
-      
-      const snapshot = await getDocs(q);
-      
-      if (snapshot.empty) throw new Error("Invalid email or password.");
-      
-      const userData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
-
-      if (userData.status !== STATUS.APPROVED) throw new Error("Account pending approval.");
-      if (userData.role !== requestedRole) throw new Error(`Access denied for ${requestedRole} portal.`);
-
-      setCurrentUser(userData);
-      setView(userData.role);
-
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRegister = async (data) => {
-    try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS), {
-        ...data,
-        role: 'unassigned', 
-        status: STATUS.PENDING,
-        createdAt: new Date().toISOString()
-      });
-      showToast("Request submitted to System Admin.", "success");
-      setView('login');
-    } catch (err) {
-      showToast("Registration failed", "error");
-    }
-  };
-
-  if (!authUser && loading) return (
-    <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
-      <div className="w-8 h-8 border-4 border-slate-600 border-t-white rounded-full animate-spin mb-4"></div>
-      <div className="text-sm font-medium tracking-widest uppercase">Initializing Secure Connection</div>
-    </div>
-  );
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-slate-200">
-      {toast && (
-        <div className={`fixed top-6 right-6 z-50 px-6 py-4 rounded-sm shadow-lg border-l-4 text-sm font-medium animate-fade-in ${toast.type === 'error' ? 'bg-white border-red-600 text-red-700' : 'bg-white border-emerald-600 text-emerald-700'}`}>
-          {toast.message}
-        </div>
-      )}
-
-      {view === 'login' && <LoginPage onLogin={handleLogin} onGoRegister={() => setView('register')} />}
-      {view === 'register' && <RegisterPage onRegister={handleRegister} onBack={() => setView('login')} />}
-      
-      {currentUser && (
-        <div className="flex flex-col h-screen overflow-hidden">
-          {/* Top Enterprise Header */}
-          <header className="bg-slate-900 text-white h-16 flex-none z-40 shadow-md">
-            <div className="flex items-center justify-between h-full px-6">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="bg-white p-0.5 rounded-sm">
-                    {/* Fixed Path & Size */}
-                    <img 
-                      src="./logo.jpg" 
-                      alt="Logo" 
-                      onError={(e) => { e.target.onerror = null; e.target.src = ''; e.target.style.display = 'none'; }}
-                      className="w-10 h-10 rounded-sm object-cover" 
-                    />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-bold text-lg leading-none tracking-tight">IDEA BANK</span>
-                    <span className="text-[10px] text-slate-400 uppercase tracking-widest">Enterprise Innovation</span>
-                  </div>
-                </div>
-                <div className="h-6 w-px bg-slate-700 mx-2"></div>
-                <span className="text-xs font-bold bg-slate-800 text-slate-300 px-3 py-1 rounded-full uppercase tracking-wide">
-                  {currentUser.role} Portal
-                </span>
-              </div>
-              
-              <div className="flex items-center gap-6">
-                <div className="text-right hidden md:block">
-                  <div className="text-sm font-medium text-white">{currentUser.name}</div>
-                  <div className="text-xs text-slate-400">{currentUser.department || 'System Admin'}</div>
-                </div>
-                <Button variant="ghost" onClick={() => { setCurrentUser(null); setView('login'); }} className="text-slate-400 hover:text-white hover:bg-slate-800">
-                  <LogOut className="w-5 h-5" />
-                </Button>
-              </div>
+    <>
+    <Card 
+      onClick={() => setShowModal(true)} 
+      className={`transition-all duration-200 hover:shadow-md cursor-pointer ${isManager && canApprove && idea.status === STATUS.PENDING ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-transparent'}`}
+    >
+      <div className="p-5">
+        <div className="flex justify-between items-start">
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-2">
+              <Badge status={idea.status} />
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{idea.mainDepartment}</span>
+              {idea.reviewedBy && (
+                 <span className="text-[10px] text-slate-400 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Reviewed by {idea.reviewedBy}</span>
+              )}
             </div>
-          </header>
-
-          {/* Main Dashboard Area */}
-          <main className="flex-1 overflow-auto bg-slate-100 p-6 md:p-8">
-            <div className="max-w-7xl mx-auto">
-              {view === ROLES.ADMIN && <AdminPortal showToast={showToast} />}
-              {view === ROLES.MANAGER && <ManagerPortal currentUser={currentUser} showToast={showToast} />}
-              {view === ROLES.EMPLOYEE && <EmployeePortal currentUser={currentUser} showToast={showToast} />}
+            <h4 className="font-bold text-lg text-slate-900 leading-tight">{idea.formTitle}</h4>
+            <div className="text-xs text-slate-500 mt-1 font-medium">
+              By {idea.employeeName} • {new Date(idea.submittedAt).toLocaleDateString()}
             </div>
-          </main>
+          </div>
+          <div className="ml-4 p-2 text-slate-400 hover:text-slate-700 bg-slate-50 rounded-full transition-colors">
+            <ExternalLink className="w-4 h-4" />
+          </div>
         </div>
-      )}
-    </div>
+        
+        {idea.subDepartments && idea.subDepartments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-4">
+            {idea.subDepartments.map(sub => (
+              <span key={sub} className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-1 rounded-sm">{sub}</span>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+
+    {/* Full Scale Modal */}
+    <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={idea.formTitle}>
+        <div className="mb-6 flex items-center gap-4 border-b border-slate-100 pb-4">
+           <Badge status={idea.status} />
+           <div className="text-sm text-slate-500">
+              Submitted by <span className="font-bold text-slate-900">{idea.employeeName}</span> on {new Date(idea.submittedAt).toLocaleDateString()}
+           </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 py-2">
+            {Object.entries(idea.formData).map(([k, v]) => (
+              <div key={k} className="group">
+                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 group-hover:text-slate-600 transition-colors">{k}</span>
+                {isUrl(v) ? (
+                   <a href={v} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-blue-600 hover:underline font-medium bg-blue-50 px-3 py-2 rounded-sm border border-blue-100">
+                      <Paperclip className="w-4 h-4" /> View Attachment / Download
+                   </a>
+                ) : (
+                   <p className="text-sm text-slate-800 leading-relaxed bg-slate-50 p-3 rounded-sm border border-slate-100">{v}</p>
+                )}
+              </div>
+            ))}
+        </div>
+
+        <div className="mt-8 bg-slate-50 border border-slate-100 p-6 rounded-sm">
+            <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+               <MessageSquare className="w-3 h-3" /> Executive Feedback
+            </h5>
+            {idea.comments && idea.comments.length > 0 ? (
+              <div className="space-y-3 mb-6 max-h-60 overflow-y-auto">
+                {idea.comments.map((c, i) => (
+                  <div key={i} className="text-sm bg-white p-4 rounded-sm border border-slate-200 shadow-sm">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-bold text-slate-900 text-xs">{c.author}</span>
+                      <span className="text-[10px] text-slate-400">{new Date(c.date).toLocaleDateString()}</span>
+                    </div>
+                    <span className="text-slate-600">{c.text}</span>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="text-xs text-slate-400 italic mb-4">No feedback recorded yet.</p>}
+            
+            {(isManager || isEmployeeView) && (
+               <div className="flex gap-2">
+                 <input 
+                   className="flex-1 text-sm px-4 py-3 border border-slate-300 rounded-sm focus:outline-none focus:border-slate-500" 
+                   placeholder="Type your comment..." 
+                   value={comment} 
+                   onChange={e => setComment(e.target.value)} 
+                   onKeyDown={e => { if (e.key === 'Enter' && comment.trim() && onComment) { onComment(idea.id, comment); setComment(''); }}}
+                 />
+                 {onComment && (
+                   <button onClick={() => { onComment(idea.id, comment); setComment(''); }} disabled={!comment.trim()} className="bg-slate-800 text-white hover:bg-slate-700 px-4 py-2 rounded-sm disabled:bg-slate-300">
+                     <Send className="w-4 h-4" />
+                   </button>
+                 )}
+               </div>
+            )}
+        </div>
+
+        {isManager && canApprove && idea.status === STATUS.PENDING && (
+            <div className="flex gap-3 pt-6 mt-6 border-t border-slate-100">
+              <Button variant="danger" className="flex-1" onClick={() => { onStatus(idea.id, STATUS.REJECTED); setShowModal(false); }}>Reject Proposal</Button>
+              <Button variant="success" className="flex-1" onClick={() => { onStatus(idea.id, STATUS.APPROVED); setShowModal(false); }}>Authorize</Button>
+            </div>
+        )}
+           
+        {isManager && !canApprove && (
+            <div className="text-center text-xs text-slate-400 italic pt-6 mt-6 border-t border-slate-100 flex items-center justify-center gap-2">
+              <XCircle className="w-4 h-4" /> Read Only: Authority lies with {idea.mainDepartment}
+            </div>
+        )}
+    </Modal>
+    </>
   );
-}
+};
 
-// --- Auth Components ---
-
-const LoginPage = ({ onLogin, onGoRegister }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+const UserApprovalRow = ({ user, depts, onApprove }) => {
   const [role, setRole] = useState(ROLES.EMPLOYEE);
-  const [imgError, setImgError] = useState(false);
-
+  const [dept, setDept] = useState('');
   return (
-    <div className="min-h-screen flex">
-      {/* Left: Brand Side */}
-      <div className="hidden lg:flex w-1/2 bg-slate-900 relative flex-col justify-between p-12 text-white">
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1516937941348-c09645f3a2eb?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-10 mix-blend-overlay"></div>
-        <div className="relative z-10">
-          {!imgError ? (
-            <img 
-              src="./logo.jpg" 
-              alt="Logo" 
-              onError={() => setImgError(true)}
-              className="w-40 h-40 rounded-sm mb-6 border-4 border-slate-700 shadow-2xl object-cover" 
-            />
-          ) : (
-            <div className="w-40 h-40 rounded-sm mb-6 border-4 border-slate-700 bg-slate-800 flex items-center justify-center">
-               <ImageOff className="w-16 h-16 text-slate-600" />
-            </div>
-          )}
-          <h1 className="text-5xl font-bold tracking-tight mb-4">Idea Bank</h1>
-          <p className="text-xl text-slate-400 font-light max-w-md">Empowering our workforce to drive operational excellence and sustainable innovation.</p>
-        </div>
-        <div className="relative z-10 text-xs text-slate-600 uppercase tracking-widest">
-          © 2026 Enterprise Operations • Secure Access
-        </div>
-      </div>
-
-      {/* Right: Login Form */}
-      <div className="w-full lg:w-1/2 bg-white flex items-center justify-center p-8">
-        <div className="w-full max-w-md">
-          <div className="mb-10 lg:hidden text-center">
-             {!imgError ? (
-              <img 
-                src="./logo.jpg" 
-                alt="Logo" 
-                onError={() => setImgError(true)}
-                className="w-24 h-24 rounded-sm mx-auto mb-4 border border-slate-200 object-cover" 
-              />
-             ) : null}
-            <h2 className="text-2xl font-bold text-slate-900">Idea Bank</h2>
-          </div>
-
-          <div className="mb-8">
-            <h2 className="text-3xl font-bold text-slate-900 mb-2">Sign In</h2>
-            <p className="text-slate-500">Access your dashboard using your company credentials.</p>
-          </div>
-
-          <Card className="p-1 mb-8 bg-slate-50 border-none">
-            <div className="flex">
-              {[ROLES.EMPLOYEE, ROLES.MANAGER, ROLES.ADMIN].map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setRole(r)}
-                  className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wide rounded-sm transition-all ${
-                    role === r ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'
-                  }`}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          </Card>
-
-          <form onSubmit={(e) => { e.preventDefault(); onLogin(email, password, role); }} className="space-y-4">
-            <Input label="Corporate Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            <Button variant="primary" type="submit" className="w-full h-12 text-base mt-2">AuthenticatE</Button>
-          </form>
-
-          <div className="mt-8 text-center">
-            <p className="text-slate-500 text-sm mb-4">Don't have access yet?</p>
-            <Button variant="secondary" onClick={onGoRegister} className="w-full">Request Account Setup</Button>
-          </div>
-        </div>
-      </div>
+    <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-sm border border-slate-200">
+      <select className="text-xs border-none bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer" value={role} onChange={e => setRole(e.target.value)}>
+        <option value={ROLES.EMPLOYEE}>Employee</option><option value={ROLES.MANAGER}>Manager</option>
+      </select>
+      <div className="w-px h-4 bg-slate-300"></div>
+      <select className="text-xs border-none bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer w-32" value={dept} onChange={e => setDept(e.target.value)}>
+        <option value="">Select Dept...</option>{depts.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+      </select>
+      <Button variant="success" onClick={() => onApprove(user.id, role, dept)} disabled={!dept} className="py-1 px-3 text-xs h-7">Approve</Button>
     </div>
   );
 };
 
-const RegisterPage = ({ onRegister, onBack }) => {
-  const [form, setForm] = useState({ name: '', email: '', password: '' });
+const UserManagement = ({ users, departments, onApprove }) => {
+  const pending = users.filter(u => u.status === STATUS.PENDING);
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-      <Card className="w-full max-w-lg p-8 md:p-10 shadow-lg border-t-4 border-t-slate-900">
-        <div className="mb-8">
-           <h2 className="text-2xl font-bold text-slate-900">Request Access</h2>
-           <p className="text-slate-500 mt-1">Fill in your details for administrative approval.</p>
+    <Card className="p-6">
+      <div className="flex items-center gap-2 mb-6">
+         <UserPlus className="w-5 h-5 text-slate-900" />
+         <h3 className="font-bold text-lg text-slate-900">Pending Access Requests</h3>
+      </div>
+      {pending.length === 0 ? (
+        <div className="text-slate-400 text-sm italic py-4">No pending requests at this time.</div>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {pending.map(u => (
+            <div key={u.id} className="py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <div className="font-bold text-slate-900">{u.name}</div>
+                <div className="text-xs text-slate-500 font-mono">{u.email}</div>
+              </div>
+              <UserApprovalRow user={u} depts={departments} onApprove={onApprove} />
+            </div>
+          ))}
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); onRegister(form); }} className="space-y-4">
-          <Input label="Full Legal Name" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} required />
-          <Input label="Corporate Email" type="email" value={form.email} onChange={(e) => setForm({...form, email: e.target.value})} required />
-          <Input label="Set Password" type="password" value={form.password} onChange={(e) => setForm({...form, password: e.target.value})} required />
-          
-          <div className="pt-6 flex gap-4">
-            <Button variant="ghost" onClick={onBack} className="flex-1">Cancel</Button>
-            <Button variant="primary" type="submit" className="flex-1">Submit Request</Button>
-          </div>
-        </form>
-      </Card>
-    </div>
+      )}
+    </Card>
   );
 };
 
-// --- Portal Components ---
+const DepartmentManager = ({ departments, showToast }) => {
+  const [name, setName] = useState('');
+  const add = async () => {
+    if(!name) return;
+    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.DEPARTMENTS), { name });
+    setName(''); showToast("Organization unit added");
+  };
+  return (
+    <Card className="p-6">
+      <h3 className="font-bold text-lg text-slate-900 mb-6">Organizational Structure</h3>
+      <div className="flex gap-2 mb-8">
+        <div className="flex-1">
+          <input className="w-full px-4 py-2 border border-slate-300 rounded-sm focus:outline-none focus:border-slate-900" value={name} onChange={e => setName(e.target.value)} placeholder="New Department Name" />
+        </div>
+        <Button onClick={add} variant="primary" className="h-full">Add Unit</Button>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        {departments.map(d => (
+          <div key={d.id} className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-sm text-sm font-semibold shadow-sm flex items-center gap-2">
+            <Briefcase className="w-3 h-3 text-slate-400" />
+            {d.name}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+};
+
+const FormBuilder = ({ forms, showToast }) => {
+  const [isCreating, setIsCreating] = useState(false);
+  const [newForm, setNewForm] = useState({ category: '', title: '', fields: [] });
+  const [field, setField] = useState({ label: '', type: 'text' });
+
+  const save = async () => {
+    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS), newForm);
+    showToast("Template Saved"); setIsCreating(false); setNewForm({ category: '', title: '', fields: [] });
+  };
+
+  if(!isCreating) return (
+    <Card className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="font-bold text-lg text-slate-900">Form Templates</h3>
+        <Button onClick={() => setIsCreating(true)} variant="primary"><Plus className="w-4 h-4 mr-1" /> New Template</Button>
+      </div>
+      <div className="grid gap-3">
+        {forms.map(f => (
+          <div key={f.id} className="p-4 border border-slate-200 rounded-sm flex justify-between items-center hover:bg-slate-50 transition-colors">
+            <span className="font-bold text-slate-800">{f.title}</span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{f.category}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+
+  return (
+    <Card className="p-8 border-l-4 border-l-slate-900">
+      <h3 className="font-bold text-xl text-slate-900 mb-6">Design New Template</h3>
+      <div className="space-y-4 mb-8">
+        <Input label="Category" value={newForm.category} onChange={e => setNewForm({...newForm, category: e.target.value})} placeholder="e.g. Health & Safety" />
+        <Input label="Title" value={newForm.title} onChange={e => setNewForm({...newForm, title: e.target.value})} placeholder="e.g. Incident Report" />
+      </div>
+
+      <div className="bg-slate-50 p-6 rounded-sm border border-slate-200 mb-8">
+        <h4 className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-4">Field Configuration</h4>
+        <div className="flex gap-3 mb-4">
+          <input className="flex-1 px-3 py-2 border border-slate-300 rounded-sm text-sm" placeholder="Field Label" value={field.label} onChange={e => setField({...field, label: e.target.value})} />
+          <select className="px-3 py-2 border border-slate-300 rounded-sm text-sm bg-white" value={field.type} onChange={e => setField({...field, type: e.target.value})}>
+            <option value="text">Text Input</option><option value="textarea">Text Area</option><option value="number">Numeric</option><option value="date">Date Picker</option><option value="file">File Attachment</option>
+          </select>
+          <Button onClick={() => { if(field.label) { setNewForm(prev => ({...prev, fields: [...prev.fields, field]})); setField({label:'', type:'text'}); }}} variant="secondary">Add</Button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {newForm.fields.map((f, i) => (
+            <span key={i} className="bg-white border border-slate-300 px-3 py-1 rounded-sm text-xs font-mono text-slate-600 flex items-center gap-2">
+              {f.label} <span className="opacity-50">({f.type})</span>
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="flex justify-end gap-3">
+        <Button variant="ghost" onClick={() => setIsCreating(false)}>Discard</Button>
+        <Button onClick={save} variant="primary">Publish Template</Button>
+      </div>
+    </Card>
+  );
+};
+
+// --- Portal Components (Defined AFTER dependencies) ---
 
 const AdminPortal = ({ showToast }) => {
   const [activeTab, setActiveTab] = useState('users');
@@ -465,8 +461,6 @@ const AdminPortal = ({ showToast }) => {
   );
 };
 
-// --- Employee Portal ---
-
 const EmployeePortal = ({ currentUser, showToast }) => {
   const [departments, setDepartments] = useState([]);
   const [forms, setForms] = useState([]);
@@ -489,11 +483,9 @@ const EmployeePortal = ({ currentUser, showToast }) => {
     if (!file) return;
     setUploading(true);
     
-    // Google Apps Script Upload Strategy
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = async () => {
-      // Clean Base64 string
       const base64 = reader.result.split(',')[1];
       const payload = {
         filename: file.name,
@@ -502,7 +494,6 @@ const EmployeePortal = ({ currentUser, showToast }) => {
       };
 
       try {
-        // Send to Google Script
         const response = await fetch(GOOGLE_SCRIPT_URL, {
           method: "POST",
           body: JSON.stringify(payload),
@@ -665,3 +656,323 @@ const EmployeePortal = ({ currentUser, showToast }) => {
     </div>
   );
 };
+
+const ManagerPortal = ({ currentUser, showToast }) => {
+  const [ideas, setIdeas] = useState([]);
+  const [filter, setFilter] = useState('all');
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), s => {
+      setIdeas(s.docs.map(d => ({id:d.id, ...d.data()})));
+    });
+    return () => unsub();
+  }, []);
+
+  const handleStatus = async (id, status) => {
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
+      status, reviewedBy: currentUser.name, reviewedAt: new Date().toISOString()
+    });
+    showToast(`Proposal status updated: ${status}`);
+  };
+
+  const handleComment = async (id, text) => {
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), {
+      comments: arrayUnion({ author: currentUser.name, text, date: new Date().toISOString() })
+    });
+    showToast("Feedback recorded");
+  };
+
+  const myDeptIdeas = ideas.filter(i => i.mainDepartment === currentUser.department);
+  const otherIdeas = ideas.filter(i => i.mainDepartment !== currentUser.department);
+  const displayedIdeas = filter === 'myDept' ? myDeptIdeas : [...myDeptIdeas, ...otherIdeas];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Executive Overview</h2>
+          <p className="text-slate-500">Review and approve operational proposals.</p>
+        </div>
+        <div className="flex bg-white rounded-sm shadow-sm border border-slate-200 p-1">
+          <button onClick={() => setFilter('all')} className={`px-6 py-2 text-sm rounded-sm font-semibold transition-all ${filter === 'all' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-900'}`}>Global View</button>
+          <button onClick={() => setFilter('myDept')} className={`px-6 py-2 text-sm rounded-sm font-semibold transition-all ${filter === 'myDept' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-900'}`}>My Department</button>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {displayedIdeas.map(idea => (
+          <IdeaCard 
+            key={idea.id} 
+            idea={idea} 
+            isManager={true} 
+            canApprove={idea.mainDepartment === currentUser.department} 
+            onStatus={handleStatus} 
+            onComment={handleComment} 
+          />
+        ))}
+        {displayedIdeas.length === 0 && (
+          <div className="p-12 text-center border-2 border-dashed border-slate-300 rounded-sm">
+             <div className="text-slate-400 font-medium">No pending proposals found in this view.</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const LoginPage = ({ onLogin, onGoRegister }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState(ROLES.EMPLOYEE);
+  const [imgError, setImgError] = useState(false);
+
+  return (
+    <div className="min-h-screen flex">
+      {/* Left: Brand Side */}
+      <div className="hidden lg:flex w-1/2 bg-slate-900 relative flex-col justify-between p-12 text-white">
+        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1516937941348-c09645f3a2eb?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-10 mix-blend-overlay"></div>
+        <div className="relative z-10">
+          {!imgError ? (
+            <img 
+              src="./logo.jpg" 
+              alt="Logo" 
+              onError={() => setImgError(true)}
+              className="w-40 h-40 rounded-sm mb-6 border-4 border-slate-700 shadow-2xl object-cover" 
+            />
+          ) : (
+            <div className="w-40 h-40 rounded-sm mb-6 border-4 border-slate-700 bg-slate-800 flex items-center justify-center">
+               <ImageOff className="w-16 h-16 text-slate-600" />
+            </div>
+          )}
+          <h1 className="text-5xl font-bold tracking-tight mb-4">Idea Bank</h1>
+          <p className="text-xl text-slate-400 font-light max-w-md">Empowering our workforce to drive operational excellence and sustainable innovation.</p>
+        </div>
+        <div className="relative z-10 text-xs text-slate-600 uppercase tracking-widest">
+          © 2026 Enterprise Operations • Secure Access
+        </div>
+      </div>
+
+      {/* Right: Login Form */}
+      <div className="w-full lg:w-1/2 bg-white flex items-center justify-center p-8">
+        <div className="w-full max-w-md">
+          <div className="mb-10 lg:hidden text-center">
+             {!imgError ? (
+              <img 
+                src="./logo.jpg" 
+                alt="Logo" 
+                onError={() => setImgError(true)}
+                className="w-24 h-24 rounded-sm mx-auto mb-4 border border-slate-200 object-cover" 
+              />
+             ) : null}
+            <h2 className="text-2xl font-bold text-slate-900">Idea Bank</h2>
+          </div>
+
+          <div className="mb-8">
+            <h2 className="text-3xl font-bold text-slate-900 mb-2">Sign In</h2>
+            <p className="text-slate-500">Access your dashboard using your company credentials.</p>
+          </div>
+
+          <Card className="p-1 mb-8 bg-slate-50 border-none">
+            <div className="flex">
+              {[ROLES.EMPLOYEE, ROLES.MANAGER, ROLES.ADMIN].map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setRole(r)}
+                  className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wide rounded-sm transition-all ${
+                    role === r ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </Card>
+
+          <form onSubmit={(e) => { e.preventDefault(); onLogin(email, password, role); }} className="space-y-4">
+            <Input label="Corporate Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <Button variant="primary" type="submit" className="w-full h-12 text-base mt-2">AuthenticatE</Button>
+          </form>
+
+          <div className="mt-8 text-center">
+            <p className="text-slate-500 text-sm mb-4">Don't have access yet?</p>
+            <Button variant="secondary" onClick={onGoRegister} className="w-full">Request Account Setup</Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const RegisterPage = ({ onRegister, onBack }) => {
+  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+      <Card className="w-full max-w-lg p-8 md:p-10 shadow-lg border-t-4 border-t-slate-900">
+        <div className="mb-8">
+           <h2 className="text-2xl font-bold text-slate-900">Request Access</h2>
+           <p className="text-slate-500 mt-1">Fill in your details for administrative approval.</p>
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); onRegister(form); }} className="space-y-4">
+          <Input label="Full Legal Name" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} required />
+          <Input label="Corporate Email" type="email" value={form.email} onChange={(e) => setForm({...form, email: e.target.value})} required />
+          <Input label="Set Password" type="password" value={form.password} onChange={(e) => setForm({...form, password: e.target.value})} required />
+          
+          <div className="pt-6 flex gap-4">
+            <Button variant="ghost" onClick={onBack} className="flex-1">Cancel</Button>
+            <Button variant="primary" type="submit" className="flex-1">Submit Request</Button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  );
+};
+
+// --- Main App Component (Moved to Bottom to fix ReferenceError) ---
+
+export default function IdeaBankApp() {
+  const [authUser, setAuthUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [view, setView] = useState('login'); 
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState(null);
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    const initAuth = async () => {
+      await signInAnonymously(auth);
+    };
+    initAuth();
+    
+    return onAuthStateChanged(auth, (user) => {
+      setAuthUser(user);
+      if (!user) setLoading(false);
+    });
+  }, []);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleLogin = async (email, password, requestedRole) => {
+    setLoading(true);
+    try {
+      if (email === DEFAULT_ADMIN.email && password === DEFAULT_ADMIN.password) {
+        if (requestedRole !== ROLES.ADMIN) throw new Error("Invalid portal for these credentials.");
+        setCurrentUser({ ...DEFAULT_ADMIN, id: 'admin-master' });
+        setView('admin');
+        setLoading(false);
+        return;
+      }
+
+      const q = query(
+        collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS),
+        where('email', '==', email),
+        where('password', '==', password)
+      );
+      
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) throw new Error("Invalid email or password.");
+      
+      const userData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+
+      if (userData.status !== STATUS.APPROVED) throw new Error("Account pending approval.");
+      if (userData.role !== requestedRole) throw new Error(`Access denied for ${requestedRole} portal.`);
+
+      setCurrentUser(userData);
+      setView(userData.role);
+
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async (data) => {
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS), {
+        ...data,
+        role: 'unassigned', 
+        status: STATUS.PENDING,
+        createdAt: new Date().toISOString()
+      });
+      showToast("Request submitted to System Admin.", "success");
+      setView('login');
+    } catch (err) {
+      showToast("Registration failed", "error");
+    }
+  };
+
+  if (!authUser && loading) return (
+    <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+      <div className="w-8 h-8 border-4 border-slate-600 border-t-white rounded-full animate-spin mb-4"></div>
+      <div className="text-sm font-medium tracking-widest uppercase">Initializing Secure Connection</div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-slate-200">
+      {toast && (
+        <div className={`fixed top-6 right-6 z-50 px-6 py-4 rounded-sm shadow-lg border-l-4 text-sm font-medium animate-fade-in ${toast.type === 'error' ? 'bg-white border-red-600 text-red-700' : 'bg-white border-emerald-600 text-emerald-700'}`}>
+          {toast.message}
+        </div>
+      )}
+
+      {view === 'login' && <LoginPage onLogin={handleLogin} onGoRegister={() => setView('register')} />}
+      {view === 'register' && <RegisterPage onRegister={handleRegister} onBack={() => setView('login')} />}
+      
+      {currentUser && (
+        <div className="flex flex-col h-screen overflow-hidden">
+          {/* Top Enterprise Header */}
+          <header className="bg-slate-900 text-white h-16 flex-none z-40 shadow-md">
+            <div className="flex items-center justify-between h-full px-6">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white p-0.5 rounded-sm">
+                    {/* Fixed Path & Size */}
+                    <img 
+                      src="./logo.jpg" 
+                      alt="Logo" 
+                      onError={(e) => { e.target.onerror = null; e.target.src = ''; e.target.style.display = 'none'; }}
+                      className="w-10 h-10 rounded-sm object-cover" 
+                    />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="font-bold text-lg leading-none tracking-tight">IDEA BANK</span>
+                    <span className="text-[10px] text-slate-400 uppercase tracking-widest">Enterprise Innovation</span>
+                  </div>
+                </div>
+                <div className="h-6 w-px bg-slate-700 mx-2"></div>
+                <span className="text-xs font-bold bg-slate-800 text-slate-300 px-3 py-1 rounded-full uppercase tracking-wide">
+                  {currentUser.role} Portal
+                </span>
+              </div>
+              
+              <div className="flex items-center gap-6">
+                <div className="text-right hidden md:block">
+                  <div className="text-sm font-medium text-white">{currentUser.name}</div>
+                  <div className="text-xs text-slate-400">{currentUser.department || 'System Admin'}</div>
+                </div>
+                <Button variant="ghost" onClick={() => { setCurrentUser(null); setView('login'); }} className="text-slate-400 hover:text-white hover:bg-slate-800">
+                  <LogOut className="w-5 h-5" />
+                </Button>
+              </div>
+            </div>
+          </header>
+
+          {/* Main Dashboard Area */}
+          <main className="flex-1 overflow-auto bg-slate-100 p-6 md:p-8">
+            <div className="max-w-7xl mx-auto">
+              {view === ROLES.ADMIN && <AdminPortal showToast={showToast} />}
+              {view === ROLES.MANAGER && <ManagerPortal currentUser={currentUser} showToast={showToast} />}
+              {view === ROLES.EMPLOYEE && <EmployeePortal currentUser={currentUser} showToast={showToast} />}
+            </div>
+          </main>
+        </div>
+      )}
+    </div>
+  );
+}
