@@ -11,13 +11,14 @@ import {
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
   UserPlus, Layout, Filter, ChevronDown, ChevronUp, Send, 
-  Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, FileDown, Sparkles, BrainCircuit, Rocket, ArrowLeft, Target, Award, MoreHorizontal, BarChart3
+  Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, FileDown, Sparkles, BrainCircuit, Rocket, ArrowLeft, Target, Award, MoreHorizontal, BarChart3, WifiOff
 } from 'lucide-react';
 
 // --- Configuration ---
 
 // 1. Firebase Config
-const firebaseConfig = {
+// Use environment config if available to prevent auth token mismatch, otherwise fallback to hardcoded
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
   apiKey: "AIzaSyAMOU-IK6UfKk75UR0P_Rs80z0uEsssQ9o",
   authDomain: "epromdeploy.firebaseapp.com",
   projectId: "epromdeploy",
@@ -42,7 +43,8 @@ const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 });
 
-const appId = "eprom-production-v1";
+// Use environment app ID if available to match the auth token scope
+const appId = typeof __app_id !== 'undefined' ? __app_id : "eprom-production-v1";
 
 // --- Constants ---
 const COLLECTIONS = {
@@ -270,10 +272,18 @@ const generatePDF = (idea, analysisText = '') => {
 
 // --- Helper Components (Primitives) ---
 
-const LoadingScreen = ({ message = "Loading..." }) => (
+const LoadingScreen = ({ message = "Loading...", onRetry }) => (
   <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
     <div className="w-8 h-8 border-4 border-slate-600 border-t-white rounded-full animate-spin mb-4"></div>
-    <div className="text-sm font-medium tracking-widest uppercase">{message}</div>
+    <div className="text-sm font-medium tracking-widest uppercase mb-4">{message}</div>
+    {onRetry && (
+      <button 
+        onClick={onRetry} 
+        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-xs uppercase tracking-wide transition-colors flex items-center gap-2"
+      >
+        <WifiOff className="w-4 h-4" /> Retry Connection
+      </button>
+    )}
   </div>
 );
 
@@ -1880,6 +1890,84 @@ const GuestView = ({ ideaId }) => {
   );
 };
 
+const PublicShowcase = ({ onBack }) => {
+  const [ideas, setIdeas] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), where('isPublic', '==', true));
+    const unsub = onSnapshot(q, (snap) => {
+      setIdeas(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  if (loading) return <LoadingScreen message="Loading Showcase..." />;
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+       {/* Header */}
+       <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-30 shadow-sm">
+          <div className="flex items-center gap-2">
+             <Rocket className="w-6 h-6 text-indigo-600" />
+             <span className="font-bold text-xl text-slate-900 tracking-tight">Innovation Showcase</span>
+          </div>
+          <Button variant="ghost" onClick={onBack}>
+             <ArrowLeft className="w-4 h-4 mr-2" /> Back to Login
+          </Button>
+       </header>
+
+       <main className="max-w-7xl mx-auto p-6 md:p-12">
+          <div className="text-center mb-12">
+             <h1 className="text-4xl font-extrabold text-slate-900 mb-4">Celebrating Excellence</h1>
+             <p className="text-lg text-slate-600 max-w-2xl mx-auto">Explore the breakthrough ideas and operational improvements driven by our talented workforce.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+             {ideas.map(idea => (
+               <div key={idea.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col group">
+                  <div className="h-2 bg-gradient-to-r from-indigo-500 to-purple-600"></div>
+                  <div className="p-6 flex-1 flex flex-col">
+                     <div className="flex justify-between items-start mb-4">
+                        <span className="text-[10px] font-bold uppercase tracking-widest bg-slate-100 text-slate-600 px-2 py-1 rounded">{idea.category || 'General'}</span>
+                        {idea.rating && (
+                           <span className="flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full">
+                              <Award className="w-3 h-3" /> Grade {idea.rating.grade}
+                           </span>
+                        )}
+                     </div>
+                     <h3 className="text-xl font-bold text-slate-900 mb-3 group-hover:text-indigo-600 transition-colors line-clamp-2">{idea.formTitle}</h3>
+                     <p className="text-slate-600 text-sm line-clamp-3 mb-6 flex-1 leading-relaxed">
+                        {idea.aiSummary || Object.values(idea.formData).find(v => typeof v === 'string' && v.length > 50) || "Click to view details..."}
+                     </p>
+                     
+                     <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                        <div className="flex items-center gap-2">
+                           <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500">{idea.employeeName?.[0]}</div>
+                           <span>{idea.employeeName}</span>
+                        </div>
+                        <span>{new Date(idea.submittedAt).toLocaleDateString()}</span>
+                     </div>
+                  </div>
+               </div>
+             ))}
+          </div>
+          
+          {ideas.length === 0 && (
+             <div className="text-center py-20">
+                <div className="bg-slate-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                   <Sparkles className="w-8 h-8 text-slate-400" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">No Public Ideas Yet</h3>
+                <p className="text-slate-500">Check back later for published innovations.</p>
+             </div>
+          )}
+       </main>
+    </div>
+  );
+};
+
 const LoginPage = ({ onLogin, onGoRegister }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -1973,11 +2061,25 @@ const RegisterPage = ({ onRegister, onBack }) => {
 
 export default function IdeaBankApp() {
   const [authUser, setAuthUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false); // New state to block UI until auth is confirmed
   const [currentUser, setCurrentUser] = useState(null);
   const [view, setView] = useState('login'); 
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [sharedIdeaId, setSharedIdeaId] = useState(null);
+
+  // Helper to retry auth calls with backoff
+  const retryOperation = async (fn, retries = 3, delay = 1000) => {
+    try {
+      return await fn();
+    } catch (error) {
+      if (retries > 0) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return retryOperation(fn, retries - 1, delay * 2);
+      }
+      throw error;
+    }
+  };
 
   useEffect(() => {
     // Inject PDF Library
@@ -1986,52 +2088,73 @@ export default function IdeaBankApp() {
     script.async = true;
     document.body.appendChild(script);
 
-    const restoreSession = async () => {
+    const initAuth = async () => {
       // Check for shared link in URL
       const params = new URLSearchParams(window.location.search);
       const shareId = params.get('share');
       if (shareId) {
         setSharedIdeaId(shareId);
-        setView('guest_auth');
-        setLoading(false);
-        return;
+        // Even with share link, we don't set view yet, wait for authReady
       }
 
-      // Normal Auth Flow
-      const authPromise = new Promise((resolve) => {
-        const unsub = onAuthStateChanged(auth, (user) => {
-          if (user) resolve(user);
-          else signInAnonymously(auth).then((result) => resolve(result.user));
-        });
-      });
-
-      await authPromise;
-      setAuthUser(auth.currentUser);
-
-      const storedUid = localStorage.getItem('ideabank_uid');
-      if (storedUid) {
-        if (storedUid === 'admin-master') {
-           setCurrentUser({ ...DEFAULT_ADMIN, id: 'admin-master' });
-           setView(ROLES.ADMIN);
+      // Robust Auth Initialization with Retry Logic
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          try {
+            await retryOperation(() => signInWithCustomToken(auth, __initial_auth_token));
+          } catch (e) {
+            console.error("Custom token auth failed, falling back to anonymous", e);
+            await retryOperation(() => signInAnonymously(auth));
+          }
         } else {
-           try {
-             const userSnap = await getDocs(query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS), where('__name__', '==', storedUid))); 
-             
-             if (!userSnap.empty) {
-                const userData = { id: userSnap.docs[0].id, ...userSnap.docs[0].data() };
-                setCurrentUser(userData);
-                setView(userData.role);
-             }
-           } catch (e) {
-             console.error("Session restore failed", e);
-             localStorage.removeItem('ideabank_uid');
-           }
+          await retryOperation(() => signInAnonymously(auth));
         }
+      } catch (e) {
+        console.error("All auth attempts failed", e);
+        // Even if auth fails, we stop the "loading" spinner so user sees an error or fallback
+        setLoading(false);
       }
-      setLoading(false);
     };
 
-    restoreSession();
+    // Listen for Auth State Changes
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setAuthUser(user);
+      setAuthReady(!!user); // Mark auth as ready only when user object is present
+      
+      if (user) {
+        // If we have a shared link, navigate there now that auth is ready
+        const params = new URLSearchParams(window.location.search);
+        const shareId = params.get('share');
+        if (shareId) {
+           setView('guest_auth'); // Or direct to guest view logic
+        } else {
+           // Only restore session if not in share mode
+           const storedUid = localStorage.getItem('ideabank_uid');
+           if (storedUid) {
+             if (storedUid === 'admin-master') {
+                setCurrentUser({ ...DEFAULT_ADMIN, id: 'admin-master' });
+                setView(ROLES.ADMIN);
+             } else {
+                try {
+                  const userSnap = await getDocs(query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS), where('__name__', '==', storedUid))); 
+                  if (!userSnap.empty) {
+                     const userData = { id: userSnap.docs[0].id, ...userSnap.docs[0].data() };
+                     setCurrentUser(userData);
+                     setView(userData.role);
+                  }
+                } catch (e) {
+                  console.error("Session restore failed", e);
+                  localStorage.removeItem('ideabank_uid');
+                }
+             }
+           }
+        }
+        setLoading(false);
+      }
+    });
+
+    initAuth();
+    return () => unsubscribe();
   }, []);
 
   const showToast = useCallback((message, type = 'success') => {
@@ -2097,7 +2220,8 @@ export default function IdeaBankApp() {
     }
   };
 
-  if (loading) return <LoadingScreen message="Loading System..." />;
+  // Force loading until Auth is definitely ready (anonymous or signed in)
+  if (loading || !authReady) return <LoadingScreen message="Establishing Secure Connection..." onRetry={() => window.location.reload()} />;
 
   // Special Routes
   if (view === 'guest_auth') return <GuestAuth onAccess={() => setView('guest_view')} />;
