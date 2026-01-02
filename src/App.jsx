@@ -349,48 +349,123 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
   );
 };
 
-const UserApprovalRow = ({ user, depts, onApprove }) => {
-  const [role, setRole] = useState(ROLES.EMPLOYEE);
-  const [dept, setDept] = useState('');
+const UserApprovalRow = ({ user, depts, onApprove, isEditMode, onUpdate }) => {
+  const [role, setRole] = useState(user.role || ROLES.EMPLOYEE);
+  const [dept, setDept] = useState(user.department || '');
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    setRole(user.role || ROLES.EMPLOYEE);
+    setDept(user.department || '');
+  }, [user]);
+
+  const handleAction = () => {
+    if (isEditMode) {
+      if (isEditing) {
+        // Save changes
+        onUpdate(user.id, { role, department: dept });
+        setIsEditing(false);
+      } else {
+        // Enable editing
+        setIsEditing(true);
+      }
+    } else {
+      // Approve Mode
+      onApprove(user.id, role, dept);
+    }
+  };
+
+  const showInputs = !isEditMode || isEditing;
+
   return (
     <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-sm border border-slate-200">
-      <select className="text-xs border-none bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer" value={role} onChange={e => setRole(e.target.value)}>
-        <option value={ROLES.EMPLOYEE}>Employee</option><option value={ROLES.MANAGER}>Manager</option>
-      </select>
-      <div className="w-px h-4 bg-slate-300"></div>
-      <select className="text-xs border-none bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer w-32" value={dept} onChange={e => setDept(e.target.value)}>
-        <option value="">Select Dept...</option>{depts.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-      </select>
-      <Button variant="success" onClick={() => onApprove(user.id, role, dept)} disabled={!dept} className="py-1 px-3 text-xs h-7">Approve</Button>
+      {showInputs ? (
+        <>
+          <select className="text-xs border-none bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer" value={role} onChange={e => setRole(e.target.value)}>
+            <option value={ROLES.EMPLOYEE}>Employee</option><option value={ROLES.MANAGER}>Manager</option>
+          </select>
+          <div className="w-px h-4 bg-slate-300"></div>
+          <select className="text-xs border-none bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer w-32" value={dept} onChange={e => setDept(e.target.value)}>
+            <option value="">Select Dept...</option>{depts.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+          </select>
+        </>
+      ) : (
+        <div className="flex items-center gap-2 px-2 text-xs font-medium text-slate-600">
+          <span>{role}</span>
+          <span className="text-slate-300">|</span>
+          <span>{dept}</span>
+        </div>
+      )}
+      
+      <Button 
+        variant={isEditMode && isEditing ? "primary" : "success"} 
+        onClick={handleAction} 
+        disabled={showInputs && !dept} 
+        className="py-1 px-3 text-xs h-7"
+      >
+        {isEditMode ? (isEditing ? <Save className="w-3 h-3" /> : <Pencil className="w-3 h-3" />) : "Approve"}
+      </Button>
     </div>
   );
 };
 
-const UserManagement = ({ users, departments, onApprove }) => {
+const UserManagement = ({ users, departments, onApprove, onUpdate }) => {
   const pending = useMemo(() => users.filter(u => u.status === STATUS.PENDING), [users]);
+  const active = useMemo(() => users.filter(u => u.status === STATUS.APPROVED && u.role !== ROLES.ADMIN), [users]);
   
   return (
-    <Card className="p-6">
-      <div className="flex items-center gap-2 mb-6">
-         <UserPlus className="w-5 h-5 text-slate-900" />
-         <h3 className="font-bold text-lg text-slate-900">Pending Access Requests</h3>
-      </div>
-      {pending.length === 0 ? (
-        <div className="text-slate-400 text-sm italic py-4">No pending requests at this time.</div>
-      ) : (
-        <div className="divide-y divide-slate-100">
-          {pending.map(u => (
-            <div key={u.id} className="py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <div className="font-bold text-slate-900">{u.name}</div>
-                <div className="text-xs text-slate-500 font-mono">{u.email}</div>
-              </div>
-              <UserApprovalRow user={u} depts={departments} onApprove={onApprove} />
-            </div>
-          ))}
+    <div className="space-y-6">
+      {/* Pending Section */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-6">
+           <UserPlus className="w-5 h-5 text-slate-900" />
+           <h3 className="font-bold text-lg text-slate-900">Pending Access Requests</h3>
         </div>
-      )}
-    </Card>
+        {pending.length === 0 ? (
+          <div className="text-slate-400 text-sm italic py-4">No pending requests at this time.</div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {pending.map(u => (
+              <div key={u.id} className="py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                  <div className="font-bold text-slate-900">{u.name}</div>
+                  <div className="text-xs text-slate-500 font-mono">{u.email}</div>
+                </div>
+                <UserApprovalRow user={u} depts={departments} onApprove={onApprove} />
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Active Directory Section */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-6">
+           <Users className="w-5 h-5 text-slate-900" />
+           <h3 className="font-bold text-lg text-slate-900">Active Directory</h3>
+        </div>
+        {active.length === 0 ? (
+          <div className="text-slate-400 text-sm italic py-4">No active users found.</div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {active.map(u => (
+              <div key={u.id} className="py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                  <div className="font-bold text-slate-900">{u.name}</div>
+                  <div className="text-xs text-slate-500 font-mono">{u.email}</div>
+                </div>
+                <UserApprovalRow 
+                  user={u} 
+                  depts={departments} 
+                  isEditMode={true} 
+                  onUpdate={onUpdate} 
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
   );
 };
 
@@ -539,6 +614,11 @@ const AdminPortal = ({ showToast }) => {
     showToast("User access granted.");
   }, [showToast]);
 
+  const updateUser = useCallback(async (id, data) => {
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.USERS, id), data);
+    showToast("User details updated.");
+  }, [showToast]);
+
   return (
     <div>
       <div className="mb-8">
@@ -567,7 +647,7 @@ const AdminPortal = ({ showToast }) => {
           ))}
         </div>
         <div className="md:col-span-9">
-          {activeTab === 'users' && <UserManagement users={users} departments={departments} onApprove={approveUser} />}
+          {activeTab === 'users' && <UserManagement users={users} departments={departments} onApprove={approveUser} onUpdate={updateUser} />}
           {activeTab === 'forms' && <FormBuilder forms={forms} showToast={showToast} />}
           {activeTab === 'departments' && <DepartmentManager departments={departments} showToast={showToast} />}
         </div>
@@ -914,7 +994,7 @@ const ManagerPortal = ({ currentUser, showToast }) => {
 const LoginPage = ({ onLogin, onGoRegister }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState(ROLES.EMPLOYEE);
+  // Removed role state and role selection buttons
   const [imgError, setImgError] = useState(false);
 
   return (
@@ -963,23 +1043,7 @@ const LoginPage = ({ onLogin, onGoRegister }) => {
             <p className="text-slate-500">Access your dashboard using your company credentials.</p>
           </div>
 
-          <Card className="p-1 mb-8 bg-slate-50 border-none">
-            <div className="flex">
-              {[ROLES.EMPLOYEE, ROLES.MANAGER, ROLES.ADMIN].map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setRole(r)}
-                  className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wide rounded-sm transition-all ${
-                    role === r ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'
-                  }`}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          </Card>
-
-          <form onSubmit={(e) => { e.preventDefault(); onLogin(email, password, role); }} className="space-y-4">
+          <form onSubmit={(e) => { e.preventDefault(); onLogin(email, password); }} className="space-y-4">
             <Input label="Corporate Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
             <Button variant="primary" type="submit" className="w-full h-12 text-base mt-2">AuthenticatE</Button>
@@ -1046,13 +1110,12 @@ export default function IdeaBankApp() {
     setTimeout(() => setToast(null), 3000);
   }, []);
 
-  const handleLogin = async (email, password, requestedRole) => {
+  const handleLogin = async (email, password) => {
     setLoading(true);
     try {
       if (email === DEFAULT_ADMIN.email && password === DEFAULT_ADMIN.password) {
-        if (requestedRole !== ROLES.ADMIN) throw new Error("Invalid portal for these credentials.");
         setCurrentUser({ ...DEFAULT_ADMIN, id: 'admin-master' });
-        setView('admin');
+        setView(ROLES.ADMIN); // Automatically route admin
         setLoading(false);
         return;
       }
@@ -1070,8 +1133,8 @@ export default function IdeaBankApp() {
       const userData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
 
       if (userData.status !== STATUS.APPROVED) throw new Error("Account pending approval.");
-      if (userData.role !== requestedRole) throw new Error(`Access denied for ${requestedRole} portal.`);
-
+      
+      // Auto-route based on role
       setCurrentUser(userData);
       setView(userData.role);
 
