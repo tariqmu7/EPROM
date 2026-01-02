@@ -564,27 +564,29 @@ const RatingSystem = ({ idea, onRate, kpis }) => {
   const currentResult = calculateGrade();
 
   return (
-    <div className="bg-slate-50 border border-slate-200 rounded-lg p-6 mb-6 shadow-inner">
-      <div className="flex items-center justify-between mb-6">
-        <h4 className="text-sm font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
-          <Target className="w-5 h-5 text-indigo-600" /> Manager Evaluation
+    <div className="bg-white border border-slate-200 rounded-xl p-6 mb-6 shadow-sm ring-1 ring-slate-100">
+      <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-50">
+        <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+          <Target className="w-4 h-4 text-indigo-600" /> Evaluation
         </h4>
-        {idea.rating && <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">Rating Saved</span>}
+        {idea.rating && <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full ring-1 ring-emerald-100"><CheckCircle className="w-3 h-3" /> Saved</span>}
       </div>
       
       <div className="space-y-6">
         {kpis.map((kpi, idx) => (
-          <div key={idx} className="flex flex-col md:flex-row md:items-start gap-4 border-b border-slate-200 pb-6 last:border-0 last:pb-0">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                 <span className="text-sm font-bold text-slate-800 leading-tight">{kpi.label}</span>
-                 <span className="flex-shrink-0 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">Weight: {kpi.weight}%</span>
-              </div>
-              <p className="text-xs text-slate-500 leading-relaxed max-w-md">{kpi.description}</p>
+          <div key={idx} className="flex flex-col gap-2">
+            <div className="flex justify-between items-start gap-4">
+               <div className="flex-1">
+                 <div className="text-sm font-bold text-slate-700 leading-tight mb-0.5">{kpi.label}</div>
+                 <div className="text-[10px] text-slate-400 leading-snug">{kpi.description}</div>
+               </div>
+               <span className="flex-shrink-0 text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                 {kpi.weight}%
+               </span>
             </div>
             
-            <div className="flex items-center gap-4 w-full md:w-auto mt-2 md:mt-0 bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-              <span className="text-xs font-bold text-slate-400">1</span>
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 flex items-center gap-3 mt-1">
+              <span className="text-[10px] font-bold text-slate-400">1</span>
               <input 
                 type="range" 
                 min="1" 
@@ -592,10 +594,10 @@ const RatingSystem = ({ idea, onRate, kpis }) => {
                 step="1"
                 value={scores[kpi.label] || 0} 
                 onChange={(e) => handleScoreChange(kpi.label, e.target.value)}
-                className="flex-1 md:w-32 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 hover:accent-indigo-500"
+                className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-100"
               />
-              <span className="text-xs font-bold text-slate-400">5</span>
-              <div className={`w-9 h-9 ml-2 flex-shrink-0 flex items-center justify-center font-bold text-base rounded-full border-2 transition-all duration-300 ${scores[kpi.label] > 0 ? 'bg-indigo-600 text-white border-indigo-600 shadow-md transform scale-110' : 'bg-white text-slate-300 border-slate-200'}`}>
+              <span className="text-[10px] font-bold text-slate-400">5</span>
+              <div className={`w-7 h-7 ml-1 flex-shrink-0 flex items-center justify-center font-bold text-xs rounded-full border transition-all duration-200 ${scores[kpi.label] > 0 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-300 border-slate-200'}`}>
                 {scores[kpi.label] || '-'}
               </div>
             </div>
@@ -603,16 +605,18 @@ const RatingSystem = ({ idea, onRate, kpis }) => {
         ))}
       </div>
       
-      <div className="mt-8 pt-6 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
-        <div className="bg-white px-5 py-3 rounded-lg border border-slate-200 shadow-sm flex items-center gap-4 w-full sm:w-auto">
-           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Overall Grade</div>
-           <div className="w-px h-8 bg-slate-200"></div>
-           <div className="flex items-baseline gap-2">
-             <span className={`text-3xl font-black ${currentResult.percentage > 0 ? 'text-indigo-600' : 'text-slate-300'}`}>{currentResult.grade}</span>
-             <span className="text-sm font-bold text-slate-500">({currentResult.percentage}%)</span>
+      <div className="mt-8 pt-6 border-t border-slate-100 bg-slate-50/50 -mx-6 -mb-6 p-6 rounded-b-xl">
+        <div className="flex items-center justify-between mb-4">
+           <div className="flex flex-col">
+             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Score</span>
+             <span className="text-[10px] text-slate-400">Weighted Average</span>
+           </div>
+           <div className="flex items-end gap-2">
+             <span className={`text-3xl font-black leading-none ${currentResult.percentage >= 50 ? 'text-indigo-600' : 'text-slate-400'}`}>{currentResult.percentage}%</span>
+             <span className={`text-sm font-bold mb-1 ${currentResult.grade === 'A' ? 'text-emerald-500' : currentResult.grade === 'B' ? 'text-blue-500' : currentResult.grade === 'C' ? 'text-amber-500' : 'text-red-500'}`}>Grade {currentResult.grade}</span>
            </div>
         </div>
-        <Button onClick={submitRating} className="px-8 h-12 shadow-indigo-100 w-full sm:w-auto">Save & Update Rating</Button>
+        <Button onClick={submitRating} className="w-full shadow-lg shadow-indigo-100">Submit Evaluation</Button>
       </div>
     </div>
   );
@@ -1641,9 +1645,12 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                  </div>
               </div>
 
-              <div className="space-y-6">
-                {activeForm?.fields.map((f, i) => (
-                  <div key={i} className="group">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {activeForm?.fields.map((f, i) => {
+                  const isLongField = ['textarea', 'file', 'image', 'checkbox'].includes(f.type) || f.label.toLowerCase().includes('title') || f.label.toLowerCase().includes('description');
+                  
+                  return (
+                  <div key={i} className={`group ${isLongField ? 'col-span-1 md:col-span-2' : 'col-span-1'}`}>
                     <label className="block text-sm font-semibold text-slate-700 mb-2 group-focus-within:text-indigo-600 transition-colors">
                       {f.label} {f.required && <span className="text-rose-500">*</span>}
                     </label>
@@ -1667,20 +1674,40 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                         </button>
                       </div>
                     ) : f.type === 'dropdown' ? (
-                       <div className="relative">
-                         <select 
-                            className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 text-sm rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all appearance-none shadow-sm"
-                            required={f.required}
-                            value={submission[f.label] || ''}
-                            onChange={e => setSubmission({...submission, [f.label]: e.target.value})}
-                         >
-                            <option value="">Select an option...</option>
-                            {f.options && f.options.map((opt, idx) => (
-                               <option key={idx} value={opt}>{opt}</option>
-                            ))}
-                         </select>
-                         <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                       </div>
+                       // Conditional Rendering: Pills for Short Lists, Dropdown for Long Lists
+                       (f.options && f.options.length <= 5) ? (
+                          <div className="flex flex-wrap gap-2">
+                             {f.options.map((opt, idx) => (
+                                <button
+                                   key={idx}
+                                   type="button"
+                                   onClick={() => setSubmission({...submission, [f.label]: opt})}
+                                   className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
+                                      submission[f.label] === opt 
+                                      ? "bg-indigo-600 text-white border-indigo-600 shadow-md" 
+                                      : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
+                                   }`}
+                                >
+                                   {opt}
+                                </button>
+                             ))}
+                          </div>
+                       ) : (
+                         <div className="relative">
+                           <select 
+                              className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 text-sm rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all appearance-none shadow-sm"
+                              required={f.required}
+                              value={submission[f.label] || ''}
+                              onChange={e => setSubmission({...submission, [f.label]: e.target.value})}
+                           >
+                              <option value="">Select an option...</option>
+                              {f.options && f.options.map((opt, idx) => (
+                                 <option key={idx} value={opt}>{opt}</option>
+                              ))}
+                           </select>
+                           <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                         </div>
+                       )
                     ) : f.type === 'checkbox' ? (
                        <div className="flex flex-wrap gap-3 bg-slate-50 p-4 rounded-lg border border-slate-100">
                           {f.options && f.options.map((opt, idx) => (
@@ -1696,7 +1723,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                           ))}
                        </div>
                     ) : (f.type === 'file' || f.type === 'image') ? (
-                       <div className="bg-slate-50 border border-dashed border-slate-300 p-6 rounded-lg hover:bg-slate-100 transition-colors text-center">
+                       <div className="bg-slate-50 border border-dashed border-slate-300 p-6 rounded-lg hover:bg-slate-100 transition-colors text-center h-full flex flex-col justify-center">
                           {submission[f.label] ? (
                              <div className="flex flex-col items-center gap-2">
                                <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
@@ -1712,7 +1739,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                                </button>
                              </div>
                           ) : (
-                             <label className="flex flex-col items-center gap-2 cursor-pointer w-full h-full">
+                             <label className="flex flex-col items-center gap-2 cursor-pointer w-full h-full justify-center">
                                 {uploading ? (
                                   <>
                                     <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
@@ -1749,7 +1776,8 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                       />
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Footer Section */}
