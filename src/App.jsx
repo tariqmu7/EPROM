@@ -11,7 +11,7 @@ import {
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
   UserPlus, Layout, Filter, ChevronDown, ChevronUp, Send, 
-  Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, FileDown, Sparkles, BrainCircuit, Rocket, ArrowLeft, Target, Award, MoreHorizontal, BarChart3, WifiOff
+  Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, FileDown, Sparkles, BrainCircuit, Rocket, ArrowLeft, Target, Award, MoreHorizontal, BarChart3, WifiOff, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -380,6 +380,139 @@ const Modal = ({ isOpen, onClose, title, children }) => {
         <div className="p-8 overflow-y-auto scroll-smooth">
           {children}
         </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Innovation Carousel Component ---
+
+const InnovationCarousel = ({ variant = 'full' }) => {
+  const [slides, setSlides] = useState([]);
+  const [current, setCurrent] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  // Helper to extract first image from formData
+  const getIdeaImage = (idea) => {
+    if (!idea.formData) return null;
+    const found = Object.values(idea.formData).find(v => 
+      typeof v === 'string' && (v.match(/\.(jpeg|jpg|gif|png)$/i) || v.includes('drive.google.com') || v.includes('googleusercontent'))
+    );
+    return found ? getDirectLink(found) : null;
+  };
+
+  useEffect(() => {
+    const q = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), where('isPublic', '==', true));
+    const unsub = onSnapshot(q, (snap) => {
+      const publicIdeas = snap.docs.map(d => ({ 
+        id: d.id, 
+        ...d.data(),
+        displayImage: getIdeaImage(d.data())
+      }));
+      setSlides(publicIdeas);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (slides.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrent(c => (c + 1) % slides.length);
+    }, 6000); // 6 seconds per slide
+    return () => clearInterval(interval);
+  }, [slides.length]);
+
+  const next = () => setCurrent(c => (c + 1) % slides.length);
+  const prev = () => setCurrent(c => (c - 1 + slides.length) % slides.length);
+
+  if (loading) return (
+    <div className={`flex items-center justify-center bg-slate-900 ${variant === 'full' ? 'h-full' : 'h-48'}`}>
+      <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+    </div>
+  );
+
+  if (slides.length === 0) return (
+    <div className={`relative overflow-hidden bg-slate-900 flex flex-col items-center justify-center text-center p-8 ${variant === 'full' ? 'h-full' : 'h-48 rounded-lg'}`}>
+      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
+      <Sparkles className="w-10 h-10 text-indigo-500 mb-4" />
+      <h3 className="text-xl font-bold text-white mb-2">Innovation Awaits</h3>
+      <p className="text-slate-400 max-w-sm">No public ideas yet. Be the first to publish an EPROM innovation.</p>
+    </div>
+  );
+
+  const slide = slides[current];
+
+  return (
+    <div className={`relative overflow-hidden group bg-slate-900 ${variant === 'full' ? 'h-full' : 'h-64 rounded-xl shadow-lg border border-slate-800'}`}>
+      {/* Background Image/Gradient */}
+      <div className="absolute inset-0 transition-all duration-700 ease-in-out">
+        {slide.displayImage ? (
+          <img 
+            src={slide.displayImage} 
+            alt="Idea Background" 
+            className="w-full h-full object-cover opacity-30 mix-blend-overlay transition-transform duration-[10s] ease-linear scale-110 group-hover:scale-100" 
+          />
+        ) : (
+          <div className={`w-full h-full bg-gradient-to-br ${current % 2 === 0 ? 'from-indigo-900 to-slate-900' : 'from-slate-900 to-violet-900'} opacity-50`} />
+        )}
+        {/* Gradient Overlay for Text Readability */}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/80 to-transparent" />
+      </div>
+
+      {/* Content */}
+      <div className={`absolute bottom-0 left-0 right-0 p-8 md:p-12 flex flex-col items-start z-10 transition-opacity duration-500`}>
+        <div className="flex items-center gap-3 mb-3">
+          <span className="bg-indigo-600 text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider shadow-sm">
+            {slide.category || 'Innovation'}
+          </span>
+          {slide.rating && (
+            <span className="flex items-center gap-1 text-xs font-bold text-emerald-400 bg-emerald-900/30 px-2 py-1 rounded border border-emerald-800">
+              <Award className="w-3 h-3" /> Grade {slide.rating.grade}
+            </span>
+          )}
+        </div>
+        
+        <h2 className={`font-bold text-white leading-tight mb-4 drop-shadow-md ${variant === 'full' ? 'text-3xl md:text-4xl' : 'text-2xl'}`}>
+          {slide.formTitle}
+        </h2>
+        
+        <p className="text-slate-300 text-sm leading-relaxed max-w-xl line-clamp-3 mb-6">
+          {slide.aiSummary || "An innovative proposal driving operational excellence at EPROM."}
+        </p>
+
+        <div className="flex items-center gap-4 text-xs font-medium text-slate-400 border-t border-slate-700/50 pt-4 w-full">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold text-[10px]">
+              {slide.employeeName?.[0]}
+            </div>
+            <span className="text-slate-200">{slide.employeeName}</span>
+          </div>
+          <span>•</span>
+          <span>{new Date(slide.submittedAt).toLocaleDateString()}</span>
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="absolute top-1/2 -translate-y-1/2 left-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button onClick={(e) => { e.stopPropagation(); prev(); }} className="p-2 bg-black/30 hover:bg-white/10 text-white rounded-full backdrop-blur-sm border border-white/10">
+          <ChevronLeft className="w-6 h-6" />
+        </button>
+      </div>
+      <div className="absolute top-1/2 -translate-y-1/2 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button onClick={(e) => { e.stopPropagation(); next(); }} className="p-2 bg-black/30 hover:bg-white/10 text-white rounded-full backdrop-blur-sm border border-white/10">
+          <ChevronRight className="w-6 h-6" />
+        </button>
+      </div>
+
+      {/* Progress Indicators */}
+      <div className="absolute bottom-4 right-8 z-20 flex gap-2">
+        {slides.map((_, i) => (
+          <div 
+            key={i} 
+            className={`h-1 rounded-full transition-all duration-300 ${i === current ? 'w-8 bg-indigo-500' : 'w-2 bg-slate-600'}`} 
+          />
+        ))}
       </div>
     </div>
   );
@@ -1890,84 +2023,6 @@ const GuestView = ({ ideaId }) => {
   );
 };
 
-const PublicShowcase = ({ onBack }) => {
-  const [ideas, setIdeas] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), where('isPublic', '==', true));
-    const unsub = onSnapshot(q, (snap) => {
-      setIdeas(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    });
-    return () => unsub();
-  }, []);
-
-  if (loading) return <LoadingScreen message="Loading Showcase..." />;
-
-  return (
-    <div className="min-h-screen bg-slate-50">
-       {/* Header */}
-       <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-30 shadow-sm">
-          <div className="flex items-center gap-2">
-             <Rocket className="w-6 h-6 text-indigo-600" />
-             <span className="font-bold text-xl text-slate-900 tracking-tight">Innovation Showcase</span>
-          </div>
-          <Button variant="ghost" onClick={onBack}>
-             <ArrowLeft className="w-4 h-4 mr-2" /> Back to Login
-          </Button>
-       </header>
-
-       <main className="max-w-7xl mx-auto p-6 md:p-12">
-          <div className="text-center mb-12">
-             <h1 className="text-4xl font-extrabold text-slate-900 mb-4">Celebrating Excellence</h1>
-             <p className="text-lg text-slate-600 max-w-2xl mx-auto">Explore the breakthrough ideas and operational improvements driven by our talented workforce.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-             {ideas.map(idea => (
-               <div key={idea.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col group">
-                  <div className="h-2 bg-gradient-to-r from-indigo-500 to-purple-600"></div>
-                  <div className="p-6 flex-1 flex flex-col">
-                     <div className="flex justify-between items-start mb-4">
-                        <span className="text-[10px] font-bold uppercase tracking-widest bg-slate-100 text-slate-600 px-2 py-1 rounded">{idea.category || 'General'}</span>
-                        {idea.rating && (
-                           <span className="flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full">
-                              <Award className="w-3 h-3" /> Grade {idea.rating.grade}
-                           </span>
-                        )}
-                     </div>
-                     <h3 className="text-xl font-bold text-slate-900 mb-3 group-hover:text-indigo-600 transition-colors line-clamp-2">{idea.formTitle}</h3>
-                     <p className="text-slate-600 text-sm line-clamp-3 mb-6 flex-1 leading-relaxed">
-                        {idea.aiSummary || Object.values(idea.formData).find(v => typeof v === 'string' && v.length > 50) || "Click to view details..."}
-                     </p>
-                     
-                     <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-                        <div className="flex items-center gap-2">
-                           <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500">{idea.employeeName?.[0]}</div>
-                           <span>{idea.employeeName}</span>
-                        </div>
-                        <span>{new Date(idea.submittedAt).toLocaleDateString()}</span>
-                     </div>
-                  </div>
-               </div>
-             ))}
-          </div>
-          
-          {ideas.length === 0 && (
-             <div className="text-center py-20">
-                <div className="bg-slate-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                   <Sparkles className="w-8 h-8 text-slate-400" />
-                </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">No Public Ideas Yet</h3>
-                <p className="text-slate-500">Check back later for published innovations.</p>
-             </div>
-          )}
-       </main>
-    </div>
-  );
-};
-
 const LoginPage = ({ onLogin, onGoRegister }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -1975,27 +2030,8 @@ const LoginPage = ({ onLogin, onGoRegister }) => {
 
   return (
     <div className="min-h-screen flex">
-      <div className="hidden lg:flex w-1/2 bg-slate-900 relative flex-col justify-between p-12 text-white">
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1516937941348-c09645f3a2eb?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-10 mix-blend-overlay"></div>
-        <div className="relative z-10">
-          {!imgError ? (
-            <img 
-              src="./logo.jpg" 
-              alt="Logo" 
-              onError={() => setImgError(true)}
-              className="w-40 h-40 rounded-sm mb-6 border-4 border-slate-700 shadow-2xl object-cover" 
-            />
-          ) : (
-            <div className="w-40 h-40 rounded-sm mb-6 border-4 border-slate-700 bg-slate-800 flex items-center justify-center">
-               <ImageOff className="w-16 h-16 text-slate-600" />
-            </div>
-          )}
-          <h1 className="text-5xl font-bold tracking-tight mb-4">Idea Bank</h1>
-          <p className="text-xl text-slate-400 font-light max-w-md">Empowering our workforce to drive operational excellence and sustainable innovation.</p>
-        </div>
-        <div className="relative z-10 text-xs text-slate-600 uppercase tracking-widest">
-          © 2026 Enterprise Operations • Secure Access
-        </div>
+      <div className="hidden lg:flex w-1/2 bg-slate-900 relative flex-col justify-between">
+        <InnovationCarousel variant="full" />
       </div>
 
       <div className="w-full lg:w-1/2 bg-white flex items-center justify-center p-8">
@@ -2227,8 +2263,7 @@ export default function IdeaBankApp() {
   if (view === 'guest_auth') return <GuestAuth onAccess={() => setView('guest_view')} />;
   if (view === 'guest_view') return <GuestView ideaId={sharedIdeaId} />;
   
-  // Show Public Showcase if logged in and navigating
-  if (view === 'showcase') return <PublicShowcase onBack={() => setView('login')} />;
+  // Note: 'showcase' view is removed as requested, replaced by the Carousel
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-slate-200">
@@ -2241,12 +2276,6 @@ export default function IdeaBankApp() {
       {view === 'login' && (
         <div className="relative">
           <LoginPage onLogin={handleLogin} onGoRegister={() => setView('register')} />
-          {/* Public Showcase Access for Non-logged-in Users */}
-          <div className="absolute top-6 right-6 z-20">
-            <Button variant="ghost" onClick={() => setView('showcase')} className="text-white bg-slate-800/50 hover:bg-slate-800 border border-slate-700">
-              <Rocket className="w-4 h-4 mr-2" /> Innovation Showcase
-            </Button>
-          </div>
         </div>
       )}
       
@@ -2279,9 +2308,6 @@ export default function IdeaBankApp() {
               </div>
               
               <div className="flex items-center gap-6">
-                <Button variant="ghost" onClick={() => setView('showcase')} className="text-slate-300 hover:text-white hover:bg-slate-800 text-xs">
-                  <Globe className="w-4 h-4 mr-1" /> Public Showcase
-                </Button>
                 <div className="text-right hidden md:block">
                   <div className="text-sm font-medium text-white">{currentUser.name}</div>
                   <div className="text-xs text-slate-400">{currentUser.department || 'System Admin'}</div>
@@ -2296,6 +2322,9 @@ export default function IdeaBankApp() {
           {/* Main Dashboard Area */}
           <main className="flex-1 overflow-auto bg-slate-100 p-6 md:p-8">
             <div className="max-w-7xl mx-auto">
+              <div className="mb-8">
+                 <InnovationCarousel variant="banner" />
+              </div>
               {view === ROLES.ADMIN && <AdminPortal showToast={showToast} />}
               {view === ROLES.MANAGER && <ManagerPortal currentUser={currentUser} showToast={showToast} />}
               {view === ROLES.EMPLOYEE && <EmployeePortal currentUser={currentUser} showToast={showToast} />}
