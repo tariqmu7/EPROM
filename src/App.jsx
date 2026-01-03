@@ -189,6 +189,40 @@ const getDirectLink = (url) => {
   return url;
 };
 
+const calculateAverageRating = (idea) => {
+  if (idea.ratings) {
+    const ratings = Object.values(idea.ratings);
+    if (ratings.length > 0) {
+      const total = ratings.reduce((sum, r) => sum + r.percentage, 0);
+      const avgPct = Math.round(total / ratings.length);
+      let grade = 'F';
+      if (avgPct >= 80) grade = 'A';
+      else if (avgPct >= 60) grade = 'B';
+      else if (avgPct >= 40) grade = 'C';
+      else grade = 'D';
+      
+      const kpiSums = {};
+      const kpiCounts = {};
+      ratings.forEach(r => {
+        if(r.details) {
+          r.details.forEach(d => {
+            kpiSums[d.label] = (kpiSums[d.label] || 0) + d.score;
+            kpiCounts[d.label] = (kpiCounts[d.label] || 0) + 1;
+          });
+        }
+      });
+      
+      const averagedDetails = Object.keys(kpiSums).map(label => ({
+         label,
+         score: parseFloat((kpiSums[label] / kpiCounts[label]).toFixed(1))
+      }));
+
+      return { percentage: avgPct, grade, count: ratings.length, details: averagedDetails };
+    }
+  }
+  return idea.rating;
+};
+
 const generatePDF = (idea, analysisText = '') => {
   if (!window.html2pdf) {
     alert("System initializing... please try again in 5 seconds.");
