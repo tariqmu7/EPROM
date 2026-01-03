@@ -11,7 +11,7 @@ import {
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
   UserPlus, Layout, ChevronDown, ChevronUp, Send, 
-  Settings, Search, Menu, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, Target, Award, AlertCircle, Handshake, Copy, Link as LinkIcon, Activity, Zap, Clock, Key, AlertTriangle, User, Star, Image as ImageIcon
+  Settings, Search, Menu, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, Target, Award, AlertCircle, Handshake, Copy, Link as LinkIcon, Activity, Zap, Clock, Key, AlertTriangle, User, Star, Image as ImageIcon, BookOpen
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -171,13 +171,11 @@ const checkDuplicates = async (newTitle, newDesc, category) => {
 
 const getIdeaTitle = (idea) => {
   if (!idea) return "Untitled";
-  // Prioritize the user-entered title from formData, fallback to the form template title
   return idea.formData?.["Initiative Title"] || idea.formData?.["Title"] || idea.formTitle;
 };
 
 const getDirectLink = (url) => {
   if (!url) return '';
-  // Check if it's a base64 data URL
   if (url.startsWith('data:image')) return url;
   
   if (url.includes('drive.google.com') && url.includes('/d/')) {
@@ -189,6 +187,40 @@ const getDirectLink = (url) => {
   return url;
 };
 
+const calculateAverageRating = (idea) => {
+  if (idea.ratings) {
+    const ratings = Object.values(idea.ratings);
+    if (ratings.length > 0) {
+      const total = ratings.reduce((sum, r) => sum + r.percentage, 0);
+      const avgPct = Math.round(total / ratings.length);
+      let grade = 'F';
+      if (avgPct >= 80) grade = 'A';
+      else if (avgPct >= 60) grade = 'B';
+      else if (avgPct >= 40) grade = 'C';
+      else grade = 'D';
+      
+      const kpiSums = {};
+      const kpiCounts = {};
+      ratings.forEach(r => {
+        if(r.details) {
+          r.details.forEach(d => {
+            kpiSums[d.label] = (kpiSums[d.label] || 0) + d.score;
+            kpiCounts[d.label] = (kpiCounts[d.label] || 0) + 1;
+          });
+        }
+      });
+      
+      const averagedDetails = Object.keys(kpiSums).map(label => ({
+         label,
+         score: (kpiSums[label] / kpiCounts[label]).toFixed(1)
+      }));
+
+      return { percentage: avgPct, grade, count: ratings.length, details: averagedDetails };
+    }
+  }
+  return idea.rating;
+};
+
 const generatePDF = (idea, analysisText = '') => {
   if (!window.html2pdf) {
     alert("System initializing... please try again in 5 seconds.");
@@ -198,27 +230,31 @@ const generatePDF = (idea, analysisText = '') => {
   const element = document.createElement('div');
   const displayTitle = getIdeaTitle(idea);
   
+  const effectiveRating = calculateAverageRating(idea);
+  
   let evaluationHtml = '';
-  if (idea.rating) {
+  if (effectiveRating) {
     evaluationHtml = `
       <div style="margin-top: 30px; margin-bottom: 30px; border: 1px solid #94a3b8; border-radius: 4px; padding: 20px; background-color: #f1f5f9;">
-        <h3 style="font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 0; margin-bottom: 15px; border-bottom: 2px solid #334155; padding-bottom: 5px; text-transform: uppercase;">Technical Evaluation</h3>
+        <h3 style="font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 0; margin-bottom: 15px; border-bottom: 2px solid #334155; padding-bottom: 5px; text-transform: uppercase;">Technical Evaluation (Average)</h3>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-           <span style="font-size: 18px; font-weight: bold; color: #0f172a;">Grade: ${idea.rating.grade}</span>
-           <span style="font-size: 14px; color: #475569;">Feasibility Score: ${idea.rating.percentage}%</span>
+           <span style="font-size: 18px; font-weight: bold; color: #0f172a;">Grade: ${effectiveRating.grade}</span>
+           <span style="font-size: 14px; color: #475569;">Feasibility Score: ${effectiveRating.percentage}% ${effectiveRating.count ? `(${effectiveRating.count} reviews)` : ''}</span>
         </div>
+        ${effectiveRating.details ? `
         <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
           <tr style="background-color: #e2e8f0; text-align: left;">
             <th style="padding: 8px; border: 1px solid #cbd5e1;">KPI Criteria</th>
-            <th style="padding: 8px; border: 1px solid #cbd5e1;">Rating (1-5)</th>
+            <th style="padding: 8px; border: 1px solid #cbd5e1;">Avg Rating (1-5)</th>
           </tr>
-          ${idea.rating.details.map(kpi => `
+          ${effectiveRating.details.map(kpi => `
             <tr>
               <td style="padding: 8px; border: 1px solid #cbd5e1;">${kpi.label}</td>
               <td style="padding: 8px; border: 1px solid #cbd5e1;">${kpi.score}</td>
             </tr>
           `).join('')}
         </table>
+        ` : ''}
       </div>
     `;
   }
@@ -272,14 +308,14 @@ const generatePDF = (idea, analysisText = '') => {
       </div>
       
       <div style="margin-top: 50px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px;">
-        Generated by EPROM Operational Excellence Portal • ISO 9001 Compliant Process
+        Generated by EPROM Innovation Hub • ISO 9001 Compliant Process
       </div>
     </div>
   `;
 
   const opt = {
     margin: 0.5,
-    filename: `EPROM-Proposal-${idea.formTitle.replace(/\s+/g, '-')}.pdf`,
+    filename: `EPROM-Proposal-${getIdeaTitle(idea).replace(/\s+/g, '-')}.pdf`,
     image: { type: 'jpeg', quality: 0.98 },
     html2canvas: { scale: 2, useCORS: true },
     jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
@@ -336,7 +372,7 @@ const Badge = ({ status, isPublic, rating, isCollab }) => {
   return (
     <div className="flex gap-2 flex-wrap">
       <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm ${styles[status]}`}>{status}</span>
-      {rating && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm flex items-center gap-1 bg-slate-100 text-slate-700 border-slate-300"><Award className="w-3 h-3 text-amber-500" /> Grade {rating.grade}</span>}
+      {rating && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm flex items-center gap-1 bg-slate-100 text-slate-700 border-slate-300"><Award className="w-3 h-3 text-amber-500" /> Grade {rating.grade} {rating.count > 1 ? `(${rating.count})` : ''}</span>}
       {isPublic && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm bg-sky-50 text-sky-700 border-sky-200 flex items-center gap-1"><Globe className="w-3 h-3" /> Global</span>}
       {isCollab && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm bg-indigo-50 text-indigo-700 border-indigo-200 flex items-center gap-1"><LinkIcon className="w-3 h-3" /> Collaborative</span>}
     </div>
@@ -448,16 +484,26 @@ const InnovationCarousel = ({ variant = 'full' }) => {
   );
 };
 
-const RatingSystem = ({ idea, onRate, kpis }) => {
+const RatingSystem = ({ idea, onRate, kpis, currentUser }) => {
   const [scores, setScores] = useState({});
 
   useEffect(() => {
-    if (idea.rating && idea.rating.details) {
-      const initialScores = {};
-      idea.rating.details.forEach(d => initialScores[d.label] = d.score);
-      setScores(initialScores);
+    // Attempt to find the specific user's rating first
+    const myRating = idea.ratings?.[currentUser.id];
+    if (myRating && myRating.details) {
+       const initialScores = {};
+       myRating.details.forEach(d => initialScores[d.label] = d.score);
+       setScores(initialScores);
+    } else if (idea.rating && idea.rating.details) {
+       // Fallback for legacy single-rating data structure
+       const initialScores = {};
+       idea.rating.details.forEach(d => initialScores[d.label] = d.score);
+       setScores(initialScores);
+    } else {
+       // Start fresh
+       setScores({});
     }
-  }, [idea]);
+  }, [idea, currentUser.id]);
 
   const handleScoreChange = (label, val) => {
     setScores(prev => ({ ...prev, [label]: parseInt(val) }));
@@ -531,6 +577,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [copying, setCopying] = useState(false);
   const [groupPeers, setGroupPeers] = useState([]);
+  const [roadmap, setRoadmap] = useState(idea.implementationPlan || null);
 
   // Fetch peers for Managers to review collaboration context
   useEffect(() => {
@@ -554,6 +601,15 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
     const analysis = await callGemini(prompt);
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, idea.id), { aiSummary: analysis });
     setAiAnalysis(analysis);
+    setIsAnalyzing(false);
+  };
+
+  const handleGenerateRoadmap = async () => {
+    setIsAnalyzing(true);
+    const prompt = `Create a 5-step high-level implementation roadmap for this Oil & Gas initiative: ${idea.formTitle}. Context: ${JSON.stringify(idea.formData).substring(0, 500)}. Format as bullet points with timelines.`;
+    const result = await callGemini(prompt);
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, idea.id), { implementationPlan: result });
+    setRoadmap(result);
     setIsAnalyzing(false);
   };
 
@@ -585,6 +641,9 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
   const publicId = idea.publicId || "N/A";
   const displayTitle = getIdeaTitle(idea);
 
+  // Calculate Average Rating if ratings exist
+  const averageRating = useMemo(() => calculateAverageRating(idea), [idea]);
+
   return (
     <>
     <div onClick={() => setShowModal(true)} className={`bg-white rounded-sm shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer group flex flex-col h-full border ${idea.duplicateFlag ? 'border-amber-400' : 'border-slate-200'}`}>
@@ -611,7 +670,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
 
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex flex-wrap items-center gap-2 mb-3">
-           <Badge status={idea.status} isPublic={idea.isPublic} rating={idea.rating} isCollab={!!idea.collaborationGroupId} />
+           <Badge status={idea.status} isPublic={idea.isPublic} rating={averageRating} isCollab={!!idea.collaborationGroupId} />
            {idea.duplicateFlag && (
                 <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-sm flex items-center gap-1 border border-amber-200 uppercase tracking-wide">
                   <AlertTriangle className="w-3 h-3" /> Duplicate Risk
@@ -796,21 +855,43 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-8">
               {/* AI Analysis */}
-              {!aiAnalysis ? (
-                <Button variant="ai" onClick={handleAnalyze} disabled={isAnalyzing} className="w-full h-14 shadow-lg flex-col gap-1 border-indigo-200">
-                  <div className="flex items-center gap-2">
-                    {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                    <span>{isAnalyzing ? "Processing Technical Data..." : "Run AI Technical Assessment"}</span>
-                  </div>
-                  <span className="text-[10px] opacity-70 font-normal normal-case">Generates Summary, Benefits & Risk Analysis</span>
-                </Button>
-              ) : (
-                <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 p-6 rounded-sm shadow-sm relative overflow-hidden">
-                   <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-                   <h4 className="font-bold text-indigo-900 flex items-center gap-2 mb-4 text-sm uppercase tracking-wider"><Star className="w-4 h-4" /> AI Technical Review</h4>
-                   <div className="whitespace-pre-wrap text-sm text-slate-700 leading-relaxed font-mono text-justify">{aiAnalysis}</div>
-                </div>
-              )}
+              <div className="space-y-4">
+               {(!aiAnalysis && !roadmap) ? (
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Button variant="ai" onClick={handleAnalyze} disabled={isAnalyzing} className="w-full h-14 shadow-lg flex-col gap-1 border-indigo-200">
+                      <div className="flex items-center gap-2">
+                        {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                        <span>{isAnalyzing ? "Processing..." : "Run AI Technical Assessment"}</span>
+                      </div>
+                      <span className="text-[10px] opacity-70 font-normal normal-case">Risk & Benefit Analysis</span>
+                    </Button>
+                    <Button variant="ai" onClick={handleGenerateRoadmap} disabled={isAnalyzing} className="w-full h-14 shadow-lg flex-col gap-1 border-indigo-200">
+                      <div className="flex items-center gap-2">
+                        {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookOpen className="w-4 h-4" />}
+                        <span>{isAnalyzing ? "Planning..." : "Generate Execution Roadmap"}</span>
+                      </div>
+                      <span className="text-[10px] opacity-70 font-normal normal-case">Create Implementation Plan</span>
+                    </Button>
+                 </div>
+               ) : (
+                  <>
+                  {aiAnalysis && (
+                    <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 p-6 rounded-sm shadow-sm relative overflow-hidden">
+                       <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                       <h4 className="font-bold text-indigo-900 flex items-center gap-2 mb-4 text-sm uppercase tracking-wider"><Star className="w-4 h-4" /> AI Technical Review</h4>
+                       <div className="whitespace-pre-wrap text-sm text-slate-700 leading-relaxed font-mono text-justify">{aiAnalysis}</div>
+                    </div>
+                  )}
+                  {roadmap && (
+                    <div className="bg-gradient-to-br from-emerald-50 to-white border border-emerald-100 p-6 rounded-sm shadow-sm relative overflow-hidden">
+                       <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+                       <h4 className="font-bold text-emerald-900 flex items-center gap-2 mb-4 text-sm uppercase tracking-wider"><BookOpen className="w-4 h-4" /> Strategic Execution Plan</h4>
+                       <div className="whitespace-pre-wrap text-sm text-slate-700 leading-relaxed font-mono text-justify">{roadmap}</div>
+                    </div>
+                  )}
+                  </>
+               )}
+              </div>
 
               {/* Form Data */}
               <div className="space-y-6">
@@ -829,7 +910,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
             </div>
 
             <div className="lg:col-span-1 space-y-6">
-              {isManager && kpis && <RatingSystem idea={idea} onRate={onRate} kpis={kpis} />}
+              {isManager && kpis && <RatingSystem idea={idea} onRate={onRate} kpis={kpis} currentUser={currentUser} />}
               
               <div className="bg-slate-50 border border-slate-200 p-4 rounded-sm shadow-sm">
                   <h5 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -1568,8 +1649,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
   );
 };
 
-// --- Missing Components Restored ---
-
+// ... (Manager Portal, Guest Auth, etc. - ensure these are present as before) ...
 const ManagerPortal = ({ currentUser, showToast }) => {
   const [ideas, setIdeas] = useState([]);
   const [filter, setFilter] = useState('all');
