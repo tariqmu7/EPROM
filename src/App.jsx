@@ -10,8 +10,8 @@ import {
 import { 
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
-  UserPlus, Layout, ChevronDown, ChevronUp, Send, 
-  Settings, Search, Menu, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, Target, Award, AlertCircle, Handshake, Copy, Link as LinkIcon, Activity, Zap, Clock, Key, AlertTriangle, User, Star, Image as ImageIcon, BookOpen
+  UserPlus, Layout, ChevronDown, Send, 
+  X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, Target, Award, AlertCircle, Handshake, Copy, Link as LinkIcon, Activity, Zap, Clock, AlertTriangle, User, Star, Image as ImageIcon, BookOpen
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -171,11 +171,13 @@ const checkDuplicates = async (newTitle, newDesc, category) => {
 
 const getIdeaTitle = (idea) => {
   if (!idea) return "Untitled";
+  // Prioritize the user-entered title from formData, fallback to the form template title
   return idea.formData?.["Initiative Title"] || idea.formData?.["Title"] || idea.formTitle;
 };
 
 const getDirectLink = (url) => {
   if (!url) return '';
+  // Check if it's a base64 data URL
   if (url.startsWith('data:image')) return url;
   
   if (url.includes('drive.google.com') && url.includes('/d/')) {
@@ -187,40 +189,6 @@ const getDirectLink = (url) => {
   return url;
 };
 
-const calculateAverageRating = (idea) => {
-  if (idea.ratings) {
-    const ratings = Object.values(idea.ratings);
-    if (ratings.length > 0) {
-      const total = ratings.reduce((sum, r) => sum + r.percentage, 0);
-      const avgPct = Math.round(total / ratings.length);
-      let grade = 'F';
-      if (avgPct >= 80) grade = 'A';
-      else if (avgPct >= 60) grade = 'B';
-      else if (avgPct >= 40) grade = 'C';
-      else grade = 'D';
-      
-      const kpiSums = {};
-      const kpiCounts = {};
-      ratings.forEach(r => {
-        if(r.details) {
-          r.details.forEach(d => {
-            kpiSums[d.label] = (kpiSums[d.label] || 0) + d.score;
-            kpiCounts[d.label] = (kpiCounts[d.label] || 0) + 1;
-          });
-        }
-      });
-      
-      const averagedDetails = Object.keys(kpiSums).map(label => ({
-         label,
-         score: (kpiSums[label] / kpiCounts[label]).toFixed(1)
-      }));
-
-      return { percentage: avgPct, grade, count: ratings.length, details: averagedDetails };
-    }
-  }
-  return idea.rating;
-};
-
 const generatePDF = (idea, analysisText = '') => {
   if (!window.html2pdf) {
     alert("System initializing... please try again in 5 seconds.");
@@ -230,31 +198,28 @@ const generatePDF = (idea, analysisText = '') => {
   const element = document.createElement('div');
   const displayTitle = getIdeaTitle(idea);
   
-  const effectiveRating = calculateAverageRating(idea);
-  
   let evaluationHtml = '';
-  if (effectiveRating) {
+  // Use the pre-calculated rating object on the idea
+  if (idea.rating) {
     evaluationHtml = `
       <div style="margin-top: 30px; margin-bottom: 30px; border: 1px solid #94a3b8; border-radius: 4px; padding: 20px; background-color: #f1f5f9;">
         <h3 style="font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 0; margin-bottom: 15px; border-bottom: 2px solid #334155; padding-bottom: 5px; text-transform: uppercase;">Technical Evaluation (Average)</h3>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-           <span style="font-size: 18px; font-weight: bold; color: #0f172a;">Grade: ${effectiveRating.grade}</span>
-           <span style="font-size: 14px; color: #475569;">Feasibility Score: ${effectiveRating.percentage}% ${effectiveRating.count ? `(${effectiveRating.count} reviews)` : ''}</span>
+           <span style="font-size: 18px; font-weight: bold; color: #0f172a;">Grade: ${idea.rating.grade}</span>
+           <span style="font-size: 14px; color: #475569;">Feasibility Score: ${idea.rating.percentage}% ${idea.rating.count ? `(${idea.rating.count} reviews)` : ''}</span>
         </div>
-        ${effectiveRating.details ? `
         <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
           <tr style="background-color: #e2e8f0; text-align: left;">
             <th style="padding: 8px; border: 1px solid #cbd5e1;">KPI Criteria</th>
             <th style="padding: 8px; border: 1px solid #cbd5e1;">Avg Rating (1-5)</th>
           </tr>
-          ${effectiveRating.details.map(kpi => `
+          ${idea.rating.details.map(kpi => `
             <tr>
               <td style="padding: 8px; border: 1px solid #cbd5e1;">${kpi.label}</td>
               <td style="padding: 8px; border: 1px solid #cbd5e1;">${kpi.score}</td>
             </tr>
           `).join('')}
         </table>
-        ` : ''}
       </div>
     `;
   }
@@ -495,12 +460,9 @@ const RatingSystem = ({ idea, onRate, kpis, currentUser }) => {
        myRating.details.forEach(d => initialScores[d.label] = d.score);
        setScores(initialScores);
     } else if (idea.rating && idea.rating.details) {
-       // Fallback for legacy single-rating data structure
-       const initialScores = {};
-       idea.rating.details.forEach(d => initialScores[d.label] = d.score);
-       setScores(initialScores);
+       // Fallback for legacy single-rating data structure only if no personal rating exists
+       setScores({});
     } else {
-       // Start fresh
        setScores({});
     }
   }, [idea, currentUser.id]);
@@ -561,10 +523,10 @@ const RatingSystem = ({ idea, onRate, kpis, currentUser }) => {
       </div>
       <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
         <div>
-           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Feasibility Score</div>
+           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">My Score</div>
            <div className="text-3xl font-black text-sky-700">{currentResult.percentage}% <span className="text-lg text-slate-400 font-medium">({currentResult.grade})</span></div>
         </div>
-        <Button onClick={submitRating}>Finalize Review</Button>
+        <Button onClick={submitRating}>Save My Rating</Button>
       </div>
     </div>
   );
@@ -670,6 +632,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
 
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex flex-wrap items-center gap-2 mb-3">
+           {/* Display Aggregate Rating on the Card */}
            <Badge status={idea.status} isPublic={idea.isPublic} rating={averageRating} isCollab={!!idea.collaborationGroupId} />
            {idea.duplicateFlag && (
                 <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-sm flex items-center gap-1 border border-amber-200 uppercase tracking-wide">
