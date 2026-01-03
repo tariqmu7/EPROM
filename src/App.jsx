@@ -10,8 +10,8 @@ import {
 import { 
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
-  Layout, ChevronDown, Send, 
-  X, Upload, ExternalLink, Paperclip, Loader2, Pencil, Save, Share2, Globe, Lock, Eye, Printer, Target, Award, AlertCircle, Handshake, Copy, Link as LinkIcon, Activity, Zap, Clock, AlertTriangle, User, Star, Image as ImageIcon
+  UserPlus, Layout, ChevronDown, ChevronUp, Send, 
+  Settings, Search, Menu, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, Target, Award, AlertCircle, Handshake, Copy, Link as LinkIcon, Activity, Zap, Clock, Key, AlertTriangle, User, Star, Image as ImageIcon
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -820,7 +820,9 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
                     <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
                       <div className="w-1 h-1 bg-sky-500 rounded-full"></div> {k}
                     </span>
-                    <div className="text-sm text-slate-900 leading-7 whitespace-pre-wrap bg-white p-4 rounded-sm border border-slate-200 shadow-sm font-medium">{Array.isArray(v) ? v.join(', ') : v}</div>
+                    <div className="text-sm text-slate-900 leading-7 whitespace-pre-wrap bg-white p-4 rounded-sm border border-slate-200 shadow-sm font-medium">
+                       {Array.isArray(v) ? v.join(', ') : (typeof v === 'string' && v.startsWith('data:image') ? <img src={v} alt="Attachment" className="max-w-full h-auto rounded-sm border" /> : v)}
+                    </div>
                   </div>
                 ))}
               </div>
