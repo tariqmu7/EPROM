@@ -1009,11 +1009,52 @@ const FormBuilder = ({ forms, showToast }) => {
   const [editingId, setEditingId] = useState(null); 
   const [newForm, setNewForm] = useState({ category: '', title: '', fields: DEFAULT_FORM_FIELDS });
   const [field, setField] = useState({ label: '', type: 'text', options: '' });
+
   const startEdit = (form) => { setNewForm(form); setEditingId(form.id); setIsCreating(true); };
+  
+  const deleteTemplate = async (id) => {
+    if (confirm("Are you sure you want to delete this form template? This will not affect existing proposals submitted by employees.")) {
+      try {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS, id));
+        showToast("Template deleted successfully.");
+      } catch (error) {
+        console.error("Delete failed", error);
+        showToast("Failed to delete template.", "error");
+      }
+    }
+  };
+
   const save = async () => { const processedFields = newForm.fields.map(f => { if ((f.type === 'dropdown' || f.type === 'checkbox') && typeof f.options === 'string') { return { ...f, options: f.options.split(',').map(o => o.trim()) }; } return f; }); const formToSave = { ...newForm, fields: processedFields }; if (editingId) { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS, editingId), formToSave); showToast("Template Updated"); } else { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS), formToSave); showToast("Template Saved"); } setIsCreating(false); setEditingId(null); setNewForm({ category: '', title: '', fields: DEFAULT_FORM_FIELDS }); };
   const cancel = () => { setIsCreating(false); setEditingId(null); setNewForm({ category: '', title: '', fields: DEFAULT_FORM_FIELDS }); };
   const addField = () => { if (field.label) { let newField = { ...field }; if ((field.type === 'dropdown' || field.type === 'checkbox') && field.options) { newField.options = field.options.split(',').map(o => o.trim()); } setNewForm(prev => ({...prev, fields: [...prev.fields, newField]})); setField({label:'', type:'text', options: ''}); } };
-  if(!isCreating) return (<Card className="p-6"><div className="flex justify-between items-center mb-6"><h3 className="font-bold text-lg text-slate-900">Form Templates</h3><Button onClick={() => setIsCreating(true)} variant="primary"><Plus className="w-4 h-4 mr-1" /> New Template</Button></div><div className="grid gap-3">{forms.map(f => (<div key={f.id} className="p-4 border border-slate-200 rounded-sm flex justify-between items-center hover:bg-slate-50 transition-colors"><div><span className="font-bold text-slate-800">{f.title}</span><span className="ml-3 text-xs font-bold text-slate-400 uppercase tracking-widest">{f.category}</span></div><button onClick={() => startEdit(f)} className="text-slate-400 hover:text-indigo-600 p-2 rounded-full hover:bg-white"><Pencil className="w-4 h-4" /></button></div>))}</div></Card>);
+  
+  if(!isCreating) return (
+    <Card className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="font-bold text-lg text-slate-900">Form Templates</h3>
+        <Button onClick={() => setIsCreating(true)} variant="primary"><Plus className="w-4 h-4 mr-1" /> New Template</Button>
+      </div>
+      <div className="grid gap-3">
+        {forms.map(f => (
+          <div key={f.id} className="p-4 border border-slate-200 rounded-sm flex justify-between items-center hover:bg-slate-50 transition-colors">
+            <div>
+              <span className="font-bold text-slate-800">{f.title}</span>
+              <span className="ml-3 text-xs font-bold text-slate-400 uppercase tracking-widest">{f.category}</span>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => startEdit(f)} className="text-slate-400 hover:text-indigo-600 p-2 rounded-full hover:bg-white" title="Edit Template">
+                <Pencil className="w-4 h-4" />
+              </button>
+              <button onClick={() => deleteTemplate(f.id)} className="text-slate-400 hover:text-red-600 p-2 rounded-full hover:bg-white" title="Delete Template">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+
   return (<Card className="p-8 border-l-4 border-l-slate-900"><h3 className="font-bold text-xl text-slate-900 mb-6">{editingId ? 'Edit Template' : 'Design New Template'}</h3><div className="space-y-4 mb-8"><Input label="Category" value={newForm.category} onChange={e => setNewForm({...newForm, category: e.target.value})} placeholder="e.g. Health & Safety" /><Input label="Title" value={newForm.title} onChange={e => setNewForm({...newForm, title: e.target.value})} placeholder="e.g. Incident Report" /></div><div className="bg-slate-50 p-6 rounded-sm border border-slate-200 mb-8"><h4 className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-4">Field Configuration</h4><div className="flex gap-3 mb-4 items-end"><div className="flex-1"><label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Field Name</label><input className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm" placeholder="e.g. Cost Estimate" value={field.label} onChange={e => setField({...field, label: e.target.value})} /></div><div className="w-1/3"><label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Type</label><select className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm bg-white" value={field.type} onChange={e => setField({...field, type: e.target.value})}><option value="text">Text Input</option><option value="textarea">Text Area</option><option value="number">Numeric</option><option value="date">Date Picker</option><option value="dropdown">Dropdown List</option><option value="checkbox">Checkbox Group</option><option value="file">File Attachment</option><option value="image">Image Upload</option></select></div>{(field.type === 'dropdown' || field.type === 'checkbox') && (<div className="flex-1"><label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Options (comma separated)</label><input className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm" placeholder="Option 1, Option 2" value={field.options} onChange={e => setField({...field, options: e.target.value})} /></div>)}<Button onClick={addField} variant="secondary">Add</Button></div><div className="flex flex-wrap gap-2">{newForm.fields.map((f, i) => (<div key={i} className="bg-white border border-slate-300 px-3 py-1 rounded-sm text-xs font-mono text-slate-600 flex items-center gap-2 group relative">{f.label} <span className="opacity-50">({f.type})</span><button onClick={() => setNewForm(prev => ({...prev, fields: prev.fields.filter((_, idx) => idx !== i)}))} className="text-red-500 hover:text-red-700 ml-1"><X className="w-3 h-3" /></button></div>))}</div></div><div className="flex justify-end gap-3"><Button variant="ghost" onClick={cancel}>Discard</Button><Button onClick={save} variant="primary">{editingId ? 'Update Template' : 'Publish Template'}</Button></div></Card>);
 };
 
