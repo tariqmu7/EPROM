@@ -11,7 +11,7 @@ import {
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
   UserPlus, Layout, ChevronDown, ChevronUp, Send, 
-  Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, FileDown, Sparkles, BrainCircuit, Rocket, ArrowLeft, Target, Award, BarChart3, WifiOff, ChevronLeft, ChevronRight, AlertCircle, Handshake, ShieldAlert, Copy, Link as LinkIcon, Droplet, Flame, Gauge, HardHat, Activity, Factory, Network
+  Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, FileDown, Sparkles, BrainCircuit, Rocket, ArrowLeft, Target, Award, BarChart3, WifiOff, ChevronLeft, ChevronRight, AlertCircle, Handshake, ShieldAlert, Copy, Link as LinkIcon, Droplet, Flame, Gauge, HardHat, Activity, Factory
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -322,7 +322,7 @@ const Badge = ({ status, isPublic, rating, isCollab }) => {
       <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm ${styles[status]}`}>{status}</span>
       {rating && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm flex items-center gap-1 bg-slate-100 text-slate-700 border-slate-300"><Award className="w-3 h-3 text-amber-500" /> Grade {rating.grade}</span>}
       {isPublic && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm bg-sky-50 text-sky-700 border-sky-200 flex items-center gap-1"><Globe className="w-3 h-3" /> Global</span>}
-      {isCollab && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm bg-indigo-50 text-indigo-700 border-indigo-200 flex items-center gap-1"><Network className="w-3 h-3" /> Collaborative</span>}
+      {isCollab && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm bg-indigo-50 text-indigo-700 border-indigo-200 flex items-center gap-1"><LinkIcon className="w-3 h-3" /> Collaborative</span>}
     </div>
   );
 };
@@ -484,12 +484,28 @@ const RatingSystem = ({ idea, onRate, kpis }) => {
   );
 };
 
-const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateComment, isEmployeeView, onEditIdea, onDeleteIdea, currentUser, onTogglePublic, onRate, kpis, onJoinTeam }) => {
+const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateComment, isEmployeeView, onEditIdea, onDeleteIdea, currentUser, onTogglePublic, onRate, kpis, onJoinTeam, onCollaborate }) => {
   const [comment, setComment] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState(idea.aiSummary || null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [copying, setCopying] = useState(false);
+  const [groupPeers, setGroupPeers] = useState([]);
+
+  // Fetch peers for Managers to review collaboration context
+  useEffect(() => {
+    if (showModal && isManager && idea.collaborationGroupId && idea.status === STATUS.PENDING) {
+       const fetchPeers = async () => {
+          try {
+            const q = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), where('collaborationGroupId', '==', idea.collaborationGroupId));
+            const snap = await getDocs(q);
+            const peers = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(d => d.id !== idea.id);
+            setGroupPeers(peers);
+          } catch(e) { console.error("Error fetching group peers", e); }
+       };
+       fetchPeers();
+    }
+  }, [showModal, isManager, idea.collaborationGroupId, idea.status, idea.id]);
 
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
@@ -569,6 +585,38 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
 
     <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={idea.formTitle}>
         <div className="mb-8 pb-6 border-b border-slate-200">
+           {/* Manager: Collaboration Approval Context */}
+           {isManager && idea.collaborationGroupId && idea.status === STATUS.PENDING && (
+             <div className="bg-indigo-50 border-l-4 border-indigo-500 p-4 mb-6 animate-fade-in shadow-sm">
+                <div className="flex items-start gap-4">
+                   <div className="bg-white p-2 rounded-full border border-indigo-100"><LinkIcon className="w-5 h-5 text-indigo-600" /></div>
+                   <div className="flex-1">
+                      <h4 className="text-sm font-bold text-indigo-900 uppercase tracking-wide">Collaboration Request</h4>
+                      <p className="text-xs text-indigo-800 mt-1 leading-relaxed">
+                        This proposal requests to join Collaboration Group <strong>{idea.collaborationGroupId.slice(0,8)}...</strong>
+                      </p>
+                      {groupPeers.length > 0 ? (
+                        <div className="mt-3 bg-white/50 p-3 rounded-sm border border-indigo-100">
+                           <span className="text-[10px] font-bold text-indigo-900 uppercase">Related Approved/Active Proposals:</span>
+                           <ul className="mt-1 space-y-1">
+                             {groupPeers.map(p => (
+                               <li key={p.id} className="text-xs text-indigo-800 flex items-center gap-2">
+                                 <CheckCircle className="w-3 h-3 text-emerald-600" /> {p.formTitle} <span className="opacity-50">({p.employeeName})</span>
+                               </li>
+                             ))}
+                           </ul>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-indigo-600 mt-2 italic">This appears to be the first or only active proposal in this group context.</p>
+                      )}
+                      <div className="mt-3 text-xs font-medium text-indigo-900">
+                         Verify alignment before approving.
+                      </div>
+                   </div>
+                </div>
+             </div>
+           )}
+
            {/* Duplicate Warning for Managers */}
            {isManager && idea.duplicateFlag && (
              <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 flex gap-4 animate-fade-in shadow-sm">
@@ -608,7 +656,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
                     <div className="col-span-2">
                       <span className="block text-slate-400 uppercase font-bold tracking-wider mb-1 text-[10px]">Collaboration Group</span>
                       <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded border border-indigo-200 text-xs flex items-center gap-1 w-fit">
-                        <Network className="w-3 h-3" /> {idea.collaborationGroupId.slice(0, 8)}...
+                        <LinkIcon className="w-3 h-3" /> {idea.collaborationGroupId.slice(0, 8)}...
                       </span>
                     </div>
                    )}
@@ -638,11 +686,20 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
                   </div>
                 )}
 
-                {onJoinTeam && !isOwner && !isCollaborator && (
-                  <Button variant="ai" onClick={() => onJoinTeam(idea.id)} className="h-9 text-xs">
-                    <Handshake className="w-4 h-4 mr-1.5" /> Join Project
+                {/* 'Collaborate' Action: Replaces simple Join Team for non-owners */}
+                {onCollaborate && !isOwner && (
+                  <Button variant="ai" onClick={() => onCollaborate(idea.publicId || idea.id)} className="h-9 text-xs">
+                    <LinkIcon className="w-4 h-4 mr-1.5" /> Submit Related Idea
                   </Button>
                 )}
+                
+                {/* Simple Team Join (Keep for legacy or simple support) */}
+                {onJoinTeam && !isOwner && !isCollaborator && (
+                  <Button variant="secondary" onClick={() => onJoinTeam(idea.id)} className="h-9 text-xs">
+                    <Handshake className="w-4 h-4 mr-1.5" /> Join Team
+                  </Button>
+                )}
+
                 {isManager && canApprove && (
                    <Button variant="secondary" onClick={() => onTogglePublic(idea.id, !idea.isPublic)} className="h-9 text-xs">
                       {idea.isPublic ? <Globe className="w-4 h-4 mr-1.5 text-sky-600" /> : <Globe className="w-4 h-4 mr-1.5" />} {idea.isPublic ? "Unpublish" : "Publish to Global"}
@@ -662,6 +719,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
            </div>
         </div>
 
+        {/* ... Rest of Modal (AI Analysis, Form Data, Discussion) ... */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-8">
               {/* AI Analysis */}
@@ -734,15 +792,31 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
   );
 };
 
-const CollaborationHub = ({ currentUser, ideas, onJoinTeam }) => {
-  const opportunities = ideas.filter(i => 
+const CollaborationHub = ({ currentUser, ideas, onJoinTeam, onCollaborate }) => {
+  // Filter for ideas that are public/active for collaboration
+  const openIdeas = ideas.filter(i => 
     i.status !== STATUS.REJECTED && 
-    (i.formData["Collaboration Needed?"] === "Yes" || i.isPublic) && 
-    i.employeeId !== currentUser.id
+    (i.formData["Collaboration Needed?"] === "Yes" || i.isPublic || i.collaborationGroupId)
   );
 
+  // Group ideas by Collaboration ID
+  const groupedIdeas = useMemo(() => {
+    const groups = {};
+    const singles = [];
+    
+    openIdeas.forEach(idea => {
+      if (idea.collaborationGroupId) {
+        if (!groups[idea.collaborationGroupId]) groups[idea.collaborationGroupId] = [];
+        groups[idea.collaborationGroupId].push(idea);
+      } else {
+        singles.push(idea);
+      }
+    });
+    return { groups, singles };
+  }, [openIdeas]);
+
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-8 animate-fade-in">
        <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-sm p-8 text-white shadow-md border-l-4 border-l-amber-500">
           <div className="flex items-center gap-6">
              <div className="p-4 bg-white/5 rounded-full backdrop-blur-sm border border-white/10">
@@ -750,36 +824,81 @@ const CollaborationHub = ({ currentUser, ideas, onJoinTeam }) => {
              </div>
              <div>
                 <h2 className="text-2xl font-bold uppercase tracking-wide font-sans">Collaboration Matrix</h2>
-                <p className="text-slate-300 font-mono text-sm mt-1">Cross-functional resource allocation for active projects.</p>
+                <p className="text-slate-300 font-mono text-sm mt-1">Join active working groups or propose related initiatives.</p>
              </div>
           </div>
        </div>
 
-       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {opportunities.length === 0 && (
-            <div className="col-span-full text-center py-16 bg-slate-50 rounded-sm border-2 border-dashed border-slate-300">
-               <div className="mx-auto w-16 h-16 bg-white rounded-full flex items-center justify-center text-slate-400 mb-4 shadow-sm">
-                 <Users className="w-8 h-8" />
-               </div>
-               <h4 className="text-slate-600 font-bold mb-1">No Active Calls for Collaboration</h4>
-               <p className="text-slate-400 text-sm">Check back later for cross-departmental opportunities.</p>
+       {/* Render Active Collaboration Groups */}
+       {Object.keys(groupedIdeas.groups).length > 0 && (
+         <div className="space-y-6">
+            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 border-b border-slate-200 pb-2">
+              <Layout className="w-4 h-4 text-indigo-600" /> Active Collaboration Clusters
+            </h3>
+            <div className="grid grid-cols-1 gap-6">
+              {Object.entries(groupedIdeas.groups).map(([groupId, groupIdeas]) => (
+                <div key={groupId} className="bg-white border border-indigo-100 rounded-sm p-6 shadow-sm relative overflow-hidden">
+                   <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                   <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                           <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-widest">Group ID: {groupId.slice(0,8)}</span>
+                           <span className="text-slate-400 text-xs font-bold">{groupIdeas.length} Proposals</span>
+                        </div>
+                        <h4 className="text-lg font-bold text-slate-800">Operational Cluster</h4>
+                      </div>
+                      <Button variant="ai" onClick={() => onCollaborate(groupIdeas[0].publicId || groupIdeas[0].id)} className="h-8 text-xs">
+                         <Plus className="w-3 h-3 mr-1" /> Submit Related Proposal
+                      </Button>
+                   </div>
+                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-sm border border-slate-200">
+                      {groupIdeas.map(idea => (
+                        <div key={idea.id} onClick={() => { /* Could open modal */ }} className="bg-white p-3 rounded-sm border border-slate-200 shadow-sm hover:border-indigo-300 cursor-pointer transition-all">
+                           <h5 className="font-bold text-sm text-slate-800 truncate">{idea.formTitle}</h5>
+                           <div className="flex justify-between mt-2 text-[10px] text-slate-500 font-medium">
+                              <span>{idea.employeeName}</span>
+                              <Badge status={idea.status} />
+                           </div>
+                        </div>
+                      ))}
+                   </div>
+                </div>
+              ))}
             </div>
-          )}
-          {opportunities.map(idea => (
-            <IdeaCard 
-              key={idea.id} 
-              idea={idea} 
-              currentUser={currentUser} 
-              onJoinTeam={onJoinTeam} 
-              isEmployeeView={true} 
-            />
-          ))}
+         </div>
+       )}
+
+       {/* Render Single Opportunities */}
+       <div className="space-y-6">
+          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 border-b border-slate-200 pb-2">
+             <Target className="w-4 h-4 text-sky-600" /> Individual Opportunities
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {groupedIdeas.singles.length === 0 && Object.keys(groupedIdeas.groups).length === 0 && (
+                <div className="col-span-full text-center py-16 bg-slate-50 rounded-sm border-2 border-dashed border-slate-300">
+                  <div className="mx-auto w-16 h-16 bg-white rounded-full flex items-center justify-center text-slate-400 mb-4 shadow-sm">
+                    <Users className="w-8 h-8" />
+                  </div>
+                  <h4 className="text-slate-600 font-bold mb-1">No Active Calls for Collaboration</h4>
+                  <p className="text-slate-400 text-sm">Check back later for cross-departmental opportunities.</p>
+                </div>
+              )}
+              {groupedIdeas.singles.map(idea => (
+                <IdeaCard 
+                  key={idea.id} 
+                  idea={idea} 
+                  currentUser={currentUser} 
+                  onJoinTeam={onJoinTeam} 
+                  onCollaborate={onCollaborate}
+                  isEmployeeView={true} 
+                />
+              ))}
+          </div>
        </div>
     </div>
   );
 };
 
-// ... [KPIManager, UserApprovalRow, UserManagement, GuestManagement, DepartmentManager, FormBuilder - Keep logic but update styling slightly]
 const KPIManager = ({ kpis, onUpdate }) => {
     const [newKPI, setNewKPI] = useState({ label: '', description: '', weight: 0 });
     const add = () => { if (!newKPI.label || !newKPI.weight) return; onUpdate([...kpis, newKPI]); setNewKPI({ label: '', description: '', weight: 0 }); };
@@ -909,10 +1028,18 @@ const EmployeePortal = ({ currentUser, showToast }) => {
       setEditingIdeaId(idea.id);
       setOriginalStatus(idea.status);
       setIsLinking(!!idea.collaborationGroupId);
-      setLinkedId(''); // We don't show the linked ID in edit mode for simplicity, or we could fetch it.
+      setLinkedId(''); 
     } else {
       showToast("Original Form Template not found. Cannot edit.", "error");
     }
+  };
+
+  const handleJoinGroup = (targetId) => {
+    // Switch to new tab, enable linking, set ID
+    setTab('new');
+    setIsLinking(true);
+    setLinkedId(targetId);
+    showToast(`Collaboration Mode: Linked to ${targetId}. Select a form to proceed.`);
   };
 
   const handleDeleteIdea = async (id) => {
@@ -920,6 +1047,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
     showToast("Proposal record deleted.");
   };
 
+  // ... handleFileUpload, handleRefine, handleSubmit (same as previous) ...
   const handleFileUpload = useCallback(async (file, label) => {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) { showToast("File limit exceeded (Max 10MB).", "error"); return; }
@@ -961,13 +1089,22 @@ const EmployeePortal = ({ currentUser, showToast }) => {
        const q = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), where('publicId', '==', linkedId.trim().toUpperCase()));
        const querySnapshot = await getDocs(q);
 
+       // Fallback if user entered internal ID instead of public ID
+       let linkedDoc = null;
        if (querySnapshot.empty) {
+          const q2 = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), where('__name__', '==', linkedId.trim()));
+          const s2 = await getDocs(q2);
+          if (!s2.empty) linkedDoc = s2.docs[0];
+       } else {
+          linkedDoc = querySnapshot.docs[0];
+       }
+
+       if (!linkedDoc) {
           showToast("Invalid Proposal ID for collaboration link.", "error");
           setIsSubmitting(false);
           return;
        }
 
-       const linkedDoc = querySnapshot.docs[0];
        const linkedData = linkedDoc.data();
 
        if (linkedData.collaborationGroupId) {
@@ -1011,9 +1148,6 @@ const EmployeePortal = ({ currentUser, showToast }) => {
     };
 
     if (editingIdeaId) {
-      // Preserve existing ID and Group if not explicitly changing
-      // Note: If user is "linking" in edit mode, it might overwrite the group. 
-      // For simplicity here, we assume if they link, they want to update the group.
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, editingIdeaId), ideaData);
       showToast("Proposal Revised. Returned to Asset Manager for approval.");
     } else {
@@ -1064,7 +1198,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
          <button onClick={() => setTab('collab')} className={`pb-3 border-b-2 font-bold text-xs uppercase tracking-wider transition-colors ${tab==='collab' ? 'border-sky-700 text-sky-800' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>Collaboration Matrix</button>
       </div>
 
-      {tab === 'collab' && <CollaborationHub currentUser={currentUser} ideas={allIdeas} onJoinTeam={handleJoinTeam} />}
+      {tab === 'collab' && <CollaborationHub currentUser={currentUser} ideas={allIdeas} onJoinTeam={handleJoinTeam} onCollaborate={handleJoinGroup} />}
 
       {tab === 'history' && (
         <div className="space-y-4">
@@ -1093,9 +1227,24 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                <h2 className="text-xl font-bold text-slate-900 font-sans">Submit Proposal</h2>
                <p className="text-slate-500 text-sm">Select a technical category to initiate the approval workflow.</p>
             </div>
+            
+            {/* Show linking context if active */}
+            {isLinking && linkedId && (
+               <div className="mb-6 bg-indigo-50 border border-indigo-200 p-4 rounded-sm flex items-center justify-between animate-fade-in">
+                  <div className="flex items-center gap-3">
+                     <LinkIcon className="w-5 h-5 text-indigo-600" />
+                     <div>
+                        <div className="text-sm font-bold text-indigo-900">Collaboration Mode Active</div>
+                        <div className="text-xs text-indigo-700">Submitting proposal linked to ID: <span className="font-mono font-bold">{linkedId}</span></div>
+                     </div>
+                  </div>
+                  <Button variant="ghost" onClick={() => { setIsLinking(false); setLinkedId(''); }} className="text-xs text-indigo-600 hover:bg-indigo-100">Cancel Link</Button>
+               </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {forms.map(form => (
-                <button key={form.id} onClick={() => { setActiveForm(form); setEditingIdeaId(null); setSubmission({}); setIsLinking(false); setLinkedId(''); }} className="flex items-start p-5 bg-white border border-slate-200 rounded-sm hover:border-sky-500 hover:shadow-md transition-all text-left group">
+                <button key={form.id} onClick={() => { setActiveForm(form); setEditingIdeaId(null); setSubmission({}); }} className="flex items-start p-5 bg-white border border-slate-200 rounded-sm hover:border-sky-500 hover:shadow-md transition-all text-left group">
                   <div className="mr-4 bg-slate-50 p-2.5 rounded-sm group-hover:bg-sky-50 transition-colors border border-slate-100">
                     <FileText className="w-5 h-5 text-slate-500 group-hover:text-sky-600" />
                   </div>
@@ -1257,13 +1406,6 @@ const EmployeePortal = ({ currentUser, showToast }) => {
     </div>
   );
 };
-
-// ... [Remainder of the file remains unchanged: ManagerPortal, GuestAuth, GuestView, LoginPage, RegisterPage, default export IdeaBankApp]
-// For brevity, I'm just closing the function block here as the rest of the file logic is identical, 
-// but in a real file update, I would include the full file.
-// The primary changes requested were in EmployeePortal (handleSubmit, state) and IdeaCard (rendering ID).
-
-// [Re-including ManagerPortal and others to ensure file completeness for the user]
 
 const ManagerPortal = ({ currentUser, showToast }) => {
   const [ideas, setIdeas] = useState([]);
