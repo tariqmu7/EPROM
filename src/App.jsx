@@ -45,6 +45,10 @@ const db = initializeFirestore(app, {
 // Use environment app ID if available to match the auth token scope
 const appId = typeof __app_id !== 'undefined' ? __app_id : "eprom-production-v1";
 
+// --- Helpers ---
+const getCollection = (name) => collection(db, 'artifacts', appId, 'public', 'data', name);
+const getDocRef = (name, id) => doc(db, 'artifacts', appId, 'public', 'data', name, id);
+
 // --- Constants ---
 const COLLECTIONS = {
   USERS: 'users',
@@ -125,7 +129,7 @@ const callGemini = async (prompt) => {
 const checkDuplicates = async (newTitle, newDesc, category) => {
   try {
     const q = query(
-      collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS),
+      getCollection(COLLECTIONS.IDEAS),
       where('category', '==', category),
     );
     const snap = await getDocs(q);
@@ -171,13 +175,11 @@ const checkDuplicates = async (newTitle, newDesc, category) => {
 
 const getIdeaTitle = (idea) => {
   if (!idea) return "Untitled";
-  // Prioritize the user-entered title from formData, fallback to the form template title
   return idea.formData?.["Initiative Title"] || idea.formData?.["Title"] || idea.formTitle;
 };
 
 const getDirectLink = (url) => {
   if (!url) return '';
-  // Check if it's a base64 data URL
   if (url.startsWith('data:image')) return url;
   
   if (url.includes('drive.google.com') && url.includes('/d/')) {
@@ -190,37 +192,51 @@ const getDirectLink = (url) => {
 };
 
 const calculateAverageRating = (idea) => {
-  if (idea.ratings) {
+  if (idea.ratings && Object.keys(idea.ratings).length > 0) {
     const ratings = Object.values(idea.ratings);
-    if (ratings.length > 0) {
-      const total = ratings.reduce((sum, r) => sum + r.percentage, 0);
-      const avgPct = Math.round(total / ratings.length);
-      let grade = 'F';
-      if (avgPct >= 80) grade = 'A';
-      else if (avgPct >= 60) grade = 'B';
-      else if (avgPct >= 40) grade = 'C';
-      else grade = 'D';
-      
-      const kpiSums = {};
-      const kpiCounts = {};
-      ratings.forEach(r => {
-        if(r.details) {
-          r.details.forEach(d => {
-            kpiSums[d.label] = (kpiSums[d.label] || 0) + d.score;
-            kpiCounts[d.label] = (kpiCounts[d.label] || 0) + 1;
-          });
-        }
-      });
-      
-      const averagedDetails = Object.keys(kpiSums).map(label => ({
-         label,
-         score: parseFloat((kpiSums[label] / kpiCounts[label]).toFixed(1))
-      }));
+    const total = ratings.reduce((sum, r) => sum + r.percentage, 0);
+    const avgPct = Math.round(total / ratings.length);
+    
+    let grade = 'F';
+    if (avgPct >= 80) grade = 'A';
+    else if (avgPct >= 60) grade = 'B';
+    else if (avgPct >= 40) grade = 'C';
+    else grade = 'D';
+    
+    // Calculate average for each KPI
+    const kpiSums = {};
+    const kpiCounts = {};
+    
+    ratings.forEach(r => {
+      if(r.details) {
+        r.details.forEach(d => {
+          kpiSums[d.label] = (kpiSums[d.label] || 0) + d.score;
+          kpiCounts[d.label] = (kpiCounts[d.label] || 0) + 1;
+        });
+      }
+    });
+    
+    const averagedDetails = Object.keys(kpiSums).map(label => ({
+       label,
+       score: parseFloat((kpiSums[label] / kpiCounts[label]).toFixed(1))
+    }));
 
-      return { percentage: avgPct, grade, count: ratings.length, details: averagedDetails };
-    }
+    return { percentage: avgPct, grade, count: ratings.length, details: averagedDetails };
   }
-  return idea.rating;
+  
+  // Fallback for legacy single rating or return null if none
+  if (idea.rating && !idea.ratings) return idea.rating;
+  
+  return null;
+};
+
+const renderFormValue = (value) => {
+  if (Array.isArray(value)) return value.join(', ');
+  if (typeof value === 'object' && value !== null) return JSON.stringify(value);
+  if (typeof value === 'string' && value.startsWith('data:image')) {
+    return <img src={value} alt="Attachment" className="max-w-full h-48 object-contain rounded-sm border mt-2" />;
+  }
+  return value;
 };
 
 const generatePDF = (idea, analysisText = '') => {
@@ -232,28 +248,31 @@ const generatePDF = (idea, analysisText = '') => {
   const element = document.createElement('div');
   const displayTitle = getIdeaTitle(idea);
   
+  const effectiveRating = calculateAverageRating(idea);
+  
   let evaluationHtml = '';
-  // Use the pre-calculated rating object on the idea
-  if (idea.rating) {
+  if (effectiveRating) {
     evaluationHtml = `
       <div style="margin-top: 30px; margin-bottom: 30px; border: 1px solid #94a3b8; border-radius: 4px; padding: 20px; background-color: #f1f5f9;">
         <h3 style="font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 0; margin-bottom: 15px; border-bottom: 2px solid #334155; padding-bottom: 5px; text-transform: uppercase;">Technical Evaluation (Average)</h3>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-           <span style="font-size: 18px; font-weight: bold; color: #0f172a;">Grade: ${idea.rating.grade}</span>
-           <span style="font-size: 14px; color: #475569;">Feasibility Score: ${idea.rating.percentage}% ${idea.rating.count ? `(${idea.rating.count} reviews)` : ''}</span>
+           <span style="font-size: 18px; font-weight: bold; color: #0f172a;">Grade: ${effectiveRating.grade}</span>
+           <span style="font-size: 14px; color: #475569;">Feasibility Score: ${effectiveRating.percentage}% ${effectiveRating.count ? `(${effectiveRating.count} reviews)` : ''}</span>
         </div>
+        ${effectiveRating.details ? `
         <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
           <tr style="background-color: #e2e8f0; text-align: left;">
             <th style="padding: 8px; border: 1px solid #cbd5e1;">KPI Criteria</th>
             <th style="padding: 8px; border: 1px solid #cbd5e1;">Avg Rating (1-5)</th>
           </tr>
-          ${idea.rating.details.map(kpi => `
+          ${effectiveRating.details.map(kpi => `
             <tr>
               <td style="padding: 8px; border: 1px solid #cbd5e1;">${kpi.label}</td>
               <td style="padding: 8px; border: 1px solid #cbd5e1;">${kpi.score}</td>
             </tr>
           `).join('')}
         </table>
+        ` : ''}
       </div>
     `;
   }
@@ -301,7 +320,7 @@ const generatePDF = (idea, analysisText = '') => {
         ${Object.entries(idea.formData).map(([k, v]) => `
             <div style="margin-bottom: 20px; page-break-inside: avoid;">
               <h3 style="font-size: 11px; font-weight: bold; color: #475569; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid #cbd5e1; padding-bottom: 2px;">${k}</h3>
-              <div style="font-size: 13px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${Array.isArray(v) ? v.join(', ') : v}</div>
+              <div style="font-size: 13px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${Array.isArray(v) ? v.join(', ') : (typeof v === 'string' && v.startsWith('data:image') ? 'Image Attachment' : v)}</div>
             </div>
           `).join('')}
       </div>
@@ -414,7 +433,7 @@ const InnovationCarousel = ({ variant = 'full' }) => {
   const [current, setCurrent] = useState(0);
 
   useEffect(() => {
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), where('isPublic', '==', true));
+    const q = query(getCollection(COLLECTIONS.IDEAS), where('isPublic', '==', true));
     const unsub = onSnapshot(q, (snap) => {
       setSlides(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -493,9 +512,6 @@ const RatingSystem = ({ idea, onRate, kpis, currentUser }) => {
        const initialScores = {};
        myRating.details.forEach(d => initialScores[d.label] = d.score);
        setScores(initialScores);
-    } else if (idea.rating && idea.rating.details) {
-       // Fallback for legacy single-rating data structure only if no personal rating exists
-       setScores({});
     } else {
        setScores({});
     }
@@ -580,7 +596,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
     if (showModal && isManager && idea.collaborationGroupId && idea.status === STATUS.PENDING) {
        const fetchPeers = async () => {
           try {
-            const q = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), where('collaborationGroupId', '==', idea.collaborationGroupId));
+            const q = query(getCollection(COLLECTIONS.IDEAS), where('collaborationGroupId', '==', idea.collaborationGroupId));
             const snap = await getDocs(q);
             const peers = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(d => d.id !== idea.id);
             setGroupPeers(peers);
@@ -595,7 +611,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
     const content = Object.entries(idea.formData).map(([k,v]) => `${k}: ${v}`).join('\n');
     const prompt = `Act as a Petroleum Engineering Consultant. Analyze this proposal titled "${idea.formTitle}". \n\nCONTENT:\n${content}\n\nPROVIDE:\n1. Executive Summary\n2. Operational Benefits (Efficiency/Cost)\n3. HSE Risk Analysis`;
     const analysis = await callGemini(prompt);
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, idea.id), { aiSummary: analysis });
+    await updateDoc(getDocRef(COLLECTIONS.IDEAS, idea.id), { aiSummary: analysis });
     setAiAnalysis(analysis);
     setIsAnalyzing(false);
   };
@@ -604,7 +620,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
     setIsAnalyzing(true);
     const prompt = `Create a 5-step high-level implementation roadmap for this Oil & Gas initiative: ${idea.formTitle}. Context: ${JSON.stringify(idea.formData).substring(0, 500)}. Format as bullet points with timelines.`;
     const result = await callGemini(prompt);
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, idea.id), { implementationPlan: result });
+    await updateDoc(getDocRef(COLLECTIONS.IDEAS, idea.id), { implementationPlan: result });
     setRoadmap(result);
     setIsAnalyzing(false);
   };
@@ -636,8 +652,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
   const isOwner = idea.employeeId === currentUser?.id;
   const publicId = idea.publicId || "N/A";
   const displayTitle = getIdeaTitle(idea);
-
-  // Calculate Average Rating if ratings exist
+  
   const averageRating = useMemo(() => calculateAverageRating(idea), [idea]);
 
   return (
@@ -666,7 +681,6 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
 
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex flex-wrap items-center gap-2 mb-3">
-           {/* Display Aggregate Rating on the Card */}
            <Badge status={idea.status} isPublic={idea.isPublic} rating={averageRating} isCollab={!!idea.collaborationGroupId} />
            {idea.duplicateFlag && (
                 <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-sm flex items-center gap-1 border border-amber-200 uppercase tracking-wide">
@@ -899,7 +913,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
                       <div className="w-1 h-1 bg-sky-500 rounded-full"></div> {k}
                     </span>
                     <div className="text-sm text-slate-900 leading-7 whitespace-pre-wrap bg-white p-4 rounded-sm border border-slate-200 shadow-sm font-medium">
-                       {Array.isArray(v) ? v.join(', ') : (typeof v === 'string' && v.startsWith('data:image') ? <img src={v} alt="Attachment" className="max-w-full h-auto rounded-sm border" /> : v)}
+                       {renderFormValue(v)}
                     </div>
                   </div>
                 ))}
@@ -1665,17 +1679,76 @@ const ManagerPortal = ({ currentUser, showToast }) => {
   const [originalStatus, setOriginalStatus] = useState(null);
 
   useEffect(() => {
-    const unsub1 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), s => { setIdeas(s.docs.map(d => ({id:d.id, ...d.data()}))); });
+    const unsub1 = onSnapshot(getCollection(COLLECTIONS.IDEAS), s => { setIdeas(s.docs.map(d => ({id:d.id, ...d.data()}))); });
     const unsub2 = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.KPIS, 'config'), s => { if (s.exists()) setKpis(s.data().list); else setKpis(DEFAULT_KPIS); });
-    const unsub3 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS), s => setForms(s.docs.map(d => ({id:d.id, ...d.data()}))));
+    const unsub3 = onSnapshot(getCollection(COLLECTIONS.FORMS), s => setForms(s.docs.map(d => ({id:d.id, ...d.data()}))));
     return () => { unsub1(); unsub2(); unsub3(); };
   }, []);
 
-  const handleStatus = useCallback(async (id, status) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), { status, reviewedBy: currentUser.name, reviewedAt: new Date().toISOString() }); showToast(`Status updated: ${status}`); }, [currentUser, showToast]);
-  const handleComment = useCallback(async (id, text) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), { comments: arrayUnion({ id: Date.now(), author: currentUser.name, text, date: new Date().toISOString() }) }); showToast("Note recorded"); }, [currentUser, showToast]);
-  const handleUpdateComment = useCallback(async (ideaId, updatedComments) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, ideaId), { comments: updatedComments }); showToast("Note updated"); }, [showToast]);
-  const handleTogglePublic = useCallback(async (id, isPublic) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), { isPublic: isPublic }); showToast(isPublic ? "Added to Global Showcase" : "Removed from Global Showcase"); }, [showToast]);
-  const handleRate = useCallback(async (id, ratingResult) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), { rating: ratingResult }); showToast("Technical Evaluation saved."); }, [showToast]);
+  const handleStatus = useCallback(async (id, status) => { await updateDoc(getDocRef(COLLECTIONS.IDEAS, id), { status, reviewedBy: currentUser.name, reviewedAt: new Date().toISOString() }); showToast(`Status updated: ${status}`); }, [currentUser, showToast]);
+  const handleComment = useCallback(async (id, text) => { await updateDoc(getDocRef(COLLECTIONS.IDEAS, id), { comments: arrayUnion({ id: Date.now(), author: currentUser.name, text, date: new Date().toISOString() }) }); showToast("Note recorded"); }, [currentUser, showToast]);
+  const handleUpdateComment = useCallback(async (ideaId, updatedComments) => { await updateDoc(getDocRef(COLLECTIONS.IDEAS, ideaId), { comments: updatedComments }); showToast("Note updated"); }, [showToast]);
+  const handleTogglePublic = useCallback(async (id, isPublic) => { await updateDoc(getDocRef(COLLECTIONS.IDEAS, id), { isPublic: isPublic }); showToast(isPublic ? "Added to Global Showcase" : "Removed from Global Showcase"); }, [showToast]);
+  
+  // Revised handleRate function for individual manager ratings
+  const handleRate = useCallback(async (id, ratingResult) => {
+    const ideaToUpdate = ideas.find(i => i.id === id);
+    if (!ideaToUpdate) return;
+
+    const currentRatings = ideaToUpdate.ratings || {};
+    // Add/Update current manager's rating
+    const newRatings = {
+      ...currentRatings,
+      [currentUser.id]: {
+        ...ratingResult,
+        managerName: currentUser.name,
+        date: new Date().toISOString()
+      }
+    };
+
+    // Calculate Average
+    const entries = Object.values(newRatings);
+    const count = entries.length;
+    const avgPct = Math.round(entries.reduce((sum, r) => sum + r.percentage, 0) / count);
+    
+    let grade = 'F';
+    if (avgPct >= 80) grade = 'A';
+    else if (avgPct >= 60) grade = 'B';
+    else if (avgPct >= 40) grade = 'C';
+    else grade = 'D';
+
+    const kpiSums = {};
+    entries.forEach(r => {
+        if (r.details) {
+            r.details.forEach(d => {
+                if (!kpiSums[d.label]) kpiSums[d.label] = 0;
+                kpiSums[d.label] += d.score;
+            });
+        }
+    });
+    
+    const avgDetails = Object.keys(kpiSums).map(label => {
+        const weight = ratingResult.details.find(d => d.label === label)?.weight || 0;
+        return {
+            label,
+            weight,
+            score: parseFloat((kpiSums[label] / count).toFixed(1))
+        };
+    });
+
+    const averageRatingObj = {
+        percentage: avgPct,
+        grade: grade,
+        details: avgDetails,
+        count: count
+    };
+
+    await updateDoc(getDocRef(COLLECTIONS.IDEAS, id), { 
+        ratings: newRatings,
+        rating: averageRatingObj 
+    });
+    showToast("Technical Evaluation saved.");
+  }, [ideas, currentUser, showToast]);
   
   // Manager Edit Actions
   const handleEditIdea = (idea) => {
@@ -1694,30 +1767,83 @@ const ManagerPortal = ({ currentUser, showToast }) => {
   };
 
   const handleDeleteIdea = async (id) => {
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id));
+    await deleteDoc(getDocRef(COLLECTIONS.IDEAS, id));
     showToast("Record permanently deleted.");
+  };
+
+  // Missing handlers needed for Manager Edit Modal
+  const handleFileUpload = useCallback(async (file, label) => {
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { showToast("File limit exceeded (Max 10MB).", "error"); return; }
+    setUploading(true);
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      const base64 = reader.result.split(',')[1];
+      const payload = { filename: file.name, mimeType: file.type, bytes: base64 };
+      try {
+        const response = await fetch(GOOGLE_SCRIPT_URL, { method: "POST", body: JSON.stringify(payload) });
+        const data = await response.json();
+        if (data.status === 'success') {
+           setSubmission(prev => ({ ...prev, [label]: data.url }));
+           showToast("Technical document uploaded securely.", "success");
+        } else { throw new Error(data.message || "Script Error"); }
+      } catch (error) { showToast("Upload failed. Check connection.", "error"); } finally { setUploading(false); }
+    };
+  }, [showToast]);
+
+  const handleCoverUpload = useCallback(async (file) => {
+    if (!file) return;
+    if (file.size > 700 * 1024) { showToast("Image too large (Max 700KB for Cover).", "error"); return; }
+    setUploading(true);
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      const base64 = reader.result; 
+      setCoverPhoto(base64);
+      setUploading(false);
+      showToast("Cover photo attached.", "success");
+    };
+    reader.onerror = () => {
+       showToast("Failed to read file.", "error");
+       setUploading(false);
+    };
+  }, [showToast]);
+
+  const toggleSubDept = (deptName) => {
+    setSubDepts(prev => prev.includes(deptName) ? prev.filter(d => d !== deptName) : [...prev, deptName]);
+  };
+
+  const handleCheckboxChange = (label, option) => {
+    const currentValues = submission[label] || [];
+    if (currentValues.includes(option)) { setSubmission(prev => ({ ...prev, [label]: currentValues.filter(v => v !== option) })); } 
+    else { setSubmission(prev => ({ ...prev, [label]: [...currentValues, option] })); }
+  };
+  
+  const handleRefine = async (fieldLabel, currentText) => {
+    if (!currentText) return;
+    const prompt = `Rewrite the following technical description to be concise, professional, and suitable for an Oil & Gas engineering proposal:\n\n"${currentText}"`;
+    showToast("AI refining technical language...", "success");
+    const refinedText = await callGemini(prompt);
+    setSubmission(prev => ({ ...prev, [fieldLabel]: refinedText }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
     
-    // Check duplicates only if title changed (omitted for brevity, assume simple update)
-    
     const ideaData = {
       formData: submission,
       mainDepartment: targetDept,
       subDepartments: subDepts,
       coverImage: coverPhoto,
-      // Manager keeps original status unless they explicitly change it elsewhere. 
-      // If it was approved, it stays approved.
       status: originalStatus, 
       lastModifiedBy: currentUser.name,
       lastModifiedAt: new Date().toISOString()
     };
 
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, editingIdeaId), ideaData);
+      await updateDoc(getDocRef(COLLECTIONS.IDEAS, editingIdeaId), ideaData);
       showToast("Proposal updated successfully.");
       setActiveForm(null);
     } catch (error) {
@@ -1790,17 +1916,100 @@ const ManagerPortal = ({ currentUser, showToast }) => {
              </div>
              {/* Simplified Form Rendering for Manager Edit - Reusing logic could be cleaner but explicit here for clarity */}
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {activeForm?.fields.map((f, i) => (
-                  <div key={i} className="col-span-1 md:col-span-2">
-                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{f.label}</label>
-                     {f.type === 'textarea' ? (
-                       <textarea className="w-full px-4 py-3 bg-white border border-slate-300 rounded-sm text-sm" value={submission[f.label] || ''} onChange={e => setSubmission({...submission, [f.label]: e.target.value})} />
-                     ) : (
-                       <input className="w-full px-4 py-3 bg-white border border-slate-300 rounded-sm text-sm" value={submission[f.label] || ''} onChange={e => setSubmission({...submission, [f.label]: e.target.value})} />
-                     )}
-                  </div>
-                ))}
+                {activeForm?.fields.map((f, i) => {
+                   const isLongField = ['textarea', 'file', 'image', 'checkbox'].includes(f.type) || f.label.toLowerCase().includes('title') || f.label.toLowerCase().includes('description');
+                   return (
+                      <div key={i} className={`group ${isLongField ? 'col-span-1 md:col-span-2' : 'col-span-1'}`}>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 group-focus-within:text-sky-700 transition-colors">
+                          {f.label}
+                        </label>
+                        {f.type === 'textarea' ? (
+                          <div className="relative">
+                            <textarea className="w-full px-4 py-3 bg-white border border-slate-300 text-slate-900 text-sm rounded-sm focus:outline-none focus:border-sky-600 focus:ring-1 focus:ring-sky-600 transition-all min-h-[140px] shadow-sm resize-y font-medium" value={submission[f.label] || ''} onChange={e => setSubmission({...submission, [f.label]: e.target.value})} />
+                            <button type="button" onClick={() => handleRefine(f.label, submission[f.label])} className="absolute right-3 bottom-3 text-[10px] bg-slate-100 text-sky-700 px-2 py-1 rounded-sm border border-slate-200 flex items-center gap-1.5 hover:bg-sky-50 hover:border-sky-200 transition-all font-bold uppercase tracking-wide" title="Rewrite professionally with AI"><Zap className="w-3 h-3" /> AI Refine</button>
+                          </div>
+                        ) : f.type === 'dropdown' ? (
+                           (f.options && f.options.length <= 5) ? (
+                              <div className="flex flex-wrap gap-2">
+                                 {f.options.map((opt, idx) => (
+                                    <button key={idx} type="button" onClick={() => setSubmission({...submission, [f.label]: opt})} className={`px-4 py-2 rounded-sm text-xs font-bold uppercase tracking-wide border transition-all ${submission[f.label] === opt ? "bg-sky-800 text-white border-sky-800 shadow-sm" : "bg-white text-slate-500 border-slate-300 hover:border-sky-400 hover:text-sky-700"}`}>{opt}</button>
+                                 ))}
+                              </div>
+                           ) : (
+                             <div className="relative">
+                               <select className="w-full px-4 py-3 bg-white border border-slate-300 text-slate-900 text-sm rounded-sm focus:outline-none focus:border-sky-600 focus:ring-1 focus:ring-sky-600 transition-all appearance-none shadow-sm font-medium" value={submission[f.label] || ''} onChange={e => setSubmission({...submission, [f.label]: e.target.value})}>
+                                  <option value="">Select option...</option>
+                                  {f.options && f.options.map((opt, idx) => (<option key={idx} value={opt}>{opt}</option>))}
+                               </select>
+                               <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                             </div>
+                           )
+                        ) : f.type === 'checkbox' ? (
+                           <div className="flex flex-wrap gap-3 bg-slate-50 p-4 rounded-sm border border-slate-200">
+                              {f.options && f.options.map((opt, idx) => (
+                                 <label key={idx} className="flex items-center gap-2.5 text-xs font-bold text-slate-600 cursor-pointer hover:text-slate-900 bg-white px-3 py-2 rounded-sm border border-slate-200 shadow-sm transition-all hover:border-slate-400 uppercase tracking-wide">
+                                    <input type="checkbox" className="rounded-sm border-slate-300 text-sky-700 focus:ring-sky-600 w-4 h-4" checked={(submission[f.label] || []).includes(opt)} onChange={() => handleCheckboxChange(f.label, opt)} /> {opt}
+                                 </label>
+                              ))}
+                           </div>
+                        ) : (f.type === 'file' || f.type === 'image') ? (
+                           <div className="bg-slate-50 border-2 border-dashed border-slate-300 p-6 rounded-sm hover:bg-slate-100 hover:border-sky-400 transition-colors text-center h-full flex flex-col justify-center min-h-[120px]">
+                              {submission[f.label] ? (
+                                 <div className="flex flex-col items-center gap-2">
+                                   <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600"><FileCheck className="w-5 h-5" /></div>
+                                   <span className="text-xs font-bold text-emerald-700 uppercase">Document Securely Stored</span>
+                                   <button type="button" onClick={() => setSubmission({...submission, [f.label]: null})} className="text-[10px] text-red-500 hover:text-red-700 underline mt-1 font-bold uppercase">Remove</button>
+                                 </div>
+                              ) : (
+                                 <label className="flex flex-col items-center gap-2 cursor-pointer w-full h-full justify-center">
+                                    {uploading ? (
+                                      <><Loader2 className="w-8 h-8 text-sky-600 animate-spin" /><span className="text-xs text-sky-700 font-bold uppercase">Encrypting & Uploading...</span></>
+                                    ) : (
+                                      <><div className="w-10 h-10 bg-white rounded-full shadow-sm flex items-center justify-center text-slate-400 mb-1 border border-slate-200"><Upload className="w-5 h-5" /></div><span className="text-xs font-bold text-slate-500 uppercase">Upload Technical Doc</span><input type="file" className="hidden" accept={f.type === 'image' ? "image/*" : "*/*"} onChange={(e) => handleFileUpload(e.target.files[0], f.label)} disabled={uploading} /></>
+                                    )}
+                                 </label>
+                              )}
+                              {submission[f.label] && <input type="hidden" value={submission[f.label]} required={f.required} />}
+                           </div>
+                        ) : (
+                          <input type={f.type} className="w-full px-4 py-3 bg-white border border-slate-300 text-slate-900 text-sm rounded-sm focus:outline-none focus:border-sky-600 focus:ring-1 focus:ring-sky-600 transition-all shadow-sm placeholder-slate-400 font-medium" value={submission[f.label] || ''} onChange={e => setSubmission({...submission, [f.label]: e.target.value})} />
+                        )}
+                      </div>
+                   );
+                })}
              </div>
+
+             {/* Cover Photo Upload for Manager */}
+             <div className="bg-slate-50 p-4 rounded-sm border border-slate-200">
+                 <div className="flex justify-between items-start mb-4">
+                    <div>
+                       <span className="block text-sm font-bold text-slate-700">Project Cover Image</span>
+                       <span className="text-xs text-slate-500">Update visual representation.</span>
+                    </div>
+                    <ImageIcon className="w-5 h-5 text-slate-400" />
+                 </div>
+                 {coverPhoto ? (
+                    <div className="relative group">
+                       <img src={getDirectLink(coverPhoto)} alt="Cover" className="w-full h-32 object-cover rounded-sm border border-slate-300" />
+                       <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          <button type="button" onClick={() => setCoverPhoto(null)} className="text-white text-xs font-bold bg-red-600 px-3 py-1 rounded-sm">Remove</button>
+                       </div>
+                    </div>
+                 ) : (
+                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 rounded-sm cursor-pointer hover:bg-white hover:border-sky-400 transition-colors">
+                       {uploading ? (
+                          <Loader2 className="w-6 h-6 text-sky-600 animate-spin" />
+                       ) : (
+                          <>
+                            <div className="bg-white p-2 rounded-full mb-2 shadow-sm"><Upload className="w-4 h-4 text-slate-400" /></div>
+                            <span className="text-[10px] font-bold uppercase text-slate-500">Upload Image</span>
+                          </>
+                       )}
+                       <input type="file" className="hidden" accept="image/*" onChange={(e) => handleCoverUpload(e.target.files[0])} disabled={uploading} />
+                    </label>
+                 )}
+             </div>
+
              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                 <Button variant="ghost" onClick={() => setActiveForm(null)}>Cancel</Button>
                 <Button variant="primary" type="submit" disabled={isSubmitting}>{isSubmitting ? "Saving..." : "Save Changes"}</Button>
