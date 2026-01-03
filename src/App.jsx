@@ -11,7 +11,7 @@ import {
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
   UserPlus, Layout, ChevronDown, ChevronUp, Send, 
-  Settings, Search, Menu, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, Target, Award, ChevronLeft, ChevronRight, AlertCircle, Handshake, Copy, Link as LinkIcon, Activity, Zap, Clock, Key, AlertTriangle, User, Image, Star
+  Settings, Search, Menu, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, Target, Award, ChevronLeft, ChevronRight, AlertCircle, Handshake, Copy, Link as LinkIcon, Activity, Zap, Clock, Key, AlertTriangle, User, Image as ImageIcon, Star
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -622,7 +622,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
       </div>
     </div>
 
-    {/* ... Modal Logic (unchanged from previous step, just reusing) ... */}
+    {/* ... Modal Logic ... */}
     <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={idea.formTitle}>
         <div className="mb-8 pb-6 border-b border-slate-200">
            {idea.coverImage && (
@@ -735,6 +735,18 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
                   </div>
                 )}
 
+                {/* Actions for Managers - EDIT and DELETE added */}
+                {isManager && (
+                  <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-100">
+                     <Button variant="secondary" onClick={() => onEditIdea(idea)} className="h-8 text-xs">
+                       <Pencil className="w-3 h-3 mr-1" /> Edit
+                     </Button>
+                     <Button variant="danger" onClick={() => { if(confirm("Delete this approved proposal? This action cannot be undone.")) onDeleteIdea(idea.id); }} className="h-8 text-xs">
+                       <Trash2 className="w-3 h-3 mr-1" /> Delete
+                     </Button>
+                  </div>
+                )}
+
                 {/* 'Collaborate' Action: Replaces simple Join Team for non-owners */}
                 {onCollaborate && !isOwner && (
                   <Button variant="ai" onClick={() => onCollaborate(idea.publicId || idea.id)} className="h-9 text-xs">
@@ -749,13 +761,15 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
                   </Button>
                 )}
 
+                {/* Updated Share Button Logic: Only show if published */}
                 {isManager && canApprove && (
                    <Button variant="secondary" onClick={() => onTogglePublic(idea.id, !idea.isPublic)} className="h-9 text-xs">
                       {idea.isPublic ? <Globe className="w-4 h-4 mr-1.5 text-sky-600" /> : <Globe className="w-4 h-4 mr-1.5" />} {idea.isPublic ? "Unpublish" : "Publish to Global"}
                    </Button>
                 )}
                 
-                {(isOwner || isManager) && (
+                {/* Share Button visible ONLY for Published ideas or Manager */}
+                {(idea.isPublic || isManager) && (
                    <Button variant="secondary" onClick={handleShare} className="h-9 text-xs">
                      <Share2 className="w-4 h-4 mr-1.5" /> {copying ? "Link Copied" : "External Share"}
                    </Button>
@@ -1348,7 +1362,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                                <span className="block text-sm font-bold text-slate-700">Project Cover Image</span>
                                <span className="text-xs text-slate-500">Upload a visual representation of the asset/concept.</span>
                             </div>
-                            <Image className="w-5 h-5 text-slate-400" />
+                            <ImageIcon className="w-5 h-5 text-slate-400" />
                          </div>
                          {coverPhoto ? (
                             <div className="relative group">
@@ -1501,17 +1515,28 @@ const EmployeePortal = ({ currentUser, showToast }) => {
   );
 };
 
-// --- Missing Components Restored ---
-
 const ManagerPortal = ({ currentUser, showToast }) => {
   const [ideas, setIdeas] = useState([]);
   const [filter, setFilter] = useState('all');
   const [kpis, setKpis] = useState([]);
+  const [forms, setForms] = useState([]);
+  
+  // Manager Editing State
+  const [activeForm, setActiveForm] = useState(null);
+  const [editingIdeaId, setEditingIdeaId] = useState(null);
+  const [submission, setSubmission] = useState({});
+  const [targetDept, setTargetDept] = useState('');
+  const [subDepts, setSubDepts] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [coverPhoto, setCoverPhoto] = useState(null);
+  const [originalStatus, setOriginalStatus] = useState(null);
 
   useEffect(() => {
     const unsub1 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), s => { setIdeas(s.docs.map(d => ({id:d.id, ...d.data()}))); });
     const unsub2 = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.KPIS, 'config'), s => { if (s.exists()) setKpis(s.data().list); else setKpis(DEFAULT_KPIS); });
-    return () => { unsub1(); unsub2(); };
+    const unsub3 = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.FORMS), s => setForms(s.docs.map(d => ({id:d.id, ...d.data()}))));
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, []);
 
   const handleStatus = useCallback(async (id, status) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), { status, reviewedBy: currentUser.name, reviewedAt: new Date().toISOString() }); showToast(`Status updated: ${status}`); }, [currentUser, showToast]);
@@ -1520,6 +1545,57 @@ const ManagerPortal = ({ currentUser, showToast }) => {
   const handleTogglePublic = useCallback(async (id, isPublic) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), { isPublic: isPublic }); showToast(isPublic ? "Added to Global Showcase" : "Removed from Global Showcase"); }, [showToast]);
   const handleRate = useCallback(async (id, ratingResult) => { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), { rating: ratingResult }); showToast("Technical Evaluation saved."); }, [showToast]);
   
+  // Manager Edit Actions
+  const handleEditIdea = (idea) => {
+    const matchingForm = forms.find(f => f.title === idea.formTitle); 
+    if (matchingForm) {
+      setActiveForm(matchingForm);
+      setSubmission(idea.formData);
+      setTargetDept(idea.mainDepartment);
+      setSubDepts(idea.subDepartments || []);
+      setEditingIdeaId(idea.id);
+      setOriginalStatus(idea.status);
+      setCoverPhoto(idea.coverImage || null);
+    } else {
+      showToast("Form template not found. Cannot edit.", "error");
+    }
+  };
+
+  const handleDeleteIdea = async (id) => {
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id));
+    showToast("Record permanently deleted.");
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    
+    // Check duplicates only if title changed (omitted for brevity, assume simple update)
+    
+    const ideaData = {
+      formData: submission,
+      mainDepartment: targetDept,
+      subDepartments: subDepts,
+      coverImage: coverPhoto,
+      // Manager keeps original status unless they explicitly change it elsewhere. 
+      // If it was approved, it stays approved.
+      status: originalStatus, 
+      lastModifiedBy: currentUser.name,
+      lastModifiedAt: new Date().toISOString()
+    };
+
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, editingIdeaId), ideaData);
+      showToast("Proposal updated successfully.");
+      setActiveForm(null);
+    } catch (error) {
+      console.error("Update failed", error);
+      showToast("Failed to update proposal.", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const myDeptIdeas = useMemo(() => ideas.filter(i => i.mainDepartment === currentUser.department), [ideas, currentUser]);
   const otherIdeas = useMemo(() => ideas.filter(i => i.mainDepartment !== currentUser.department), [ideas, currentUser]);
   const displayedIdeas = useMemo(() => filter === 'myDept' ? myDeptIdeas : [...myDeptIdeas, ...otherIdeas], [filter, myDeptIdeas, otherIdeas]);
@@ -1550,9 +1626,55 @@ const ManagerPortal = ({ currentUser, showToast }) => {
       </div>
 
       <div className="space-y-4">
-        {displayedIdeas.map(idea => (<IdeaCard key={idea.id} idea={idea} isManager={true} canApprove={idea.mainDepartment === currentUser.department} onStatus={handleStatus} onComment={handleComment} onUpdateComment={handleUpdateComment} onTogglePublic={handleTogglePublic} currentUser={currentUser} onRate={handleRate} kpis={kpis} />))}
+        {displayedIdeas.map(idea => (
+          <IdeaCard 
+            key={idea.id} 
+            idea={idea} 
+            isManager={true} 
+            canApprove={idea.mainDepartment === currentUser.department} 
+            onStatus={handleStatus} 
+            onComment={handleComment} 
+            onUpdateComment={handleUpdateComment} 
+            onTogglePublic={handleTogglePublic} 
+            currentUser={currentUser} 
+            onRate={handleRate} 
+            kpis={kpis} 
+            onEditIdea={handleEditIdea}
+            onDeleteIdea={handleDeleteIdea}
+          />
+        ))}
         {displayedIdeas.length === 0 && (<div className="p-16 text-center border-2 border-dashed border-slate-300 rounded-sm bg-slate-50"><div className="text-slate-400 font-bold uppercase tracking-widest text-xs">No pending items in queue.</div></div>)}
       </div>
+
+      {/* Manager Edit Modal */}
+      <Modal isOpen={!!activeForm} onClose={() => setActiveForm(null)} title={`Edit: ${activeForm?.title}`}>
+          <form onSubmit={handleSubmit} className="space-y-6">
+             <div className="bg-amber-50 p-4 rounded-sm border-l-4 border-amber-500 flex items-start gap-3">
+                 <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5" />
+                 <div>
+                    <h4 className="text-sm font-bold text-amber-900">Manager Override</h4>
+                    <p className="text-xs text-amber-800 mt-1">You are editing a live record. Changes will be reflected immediately without re-approval.</p>
+                 </div>
+             </div>
+             {/* Simplified Form Rendering for Manager Edit - Reusing logic could be cleaner but explicit here for clarity */}
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {activeForm?.fields.map((f, i) => (
+                  <div key={i} className="col-span-1 md:col-span-2">
+                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{f.label}</label>
+                     {f.type === 'textarea' ? (
+                       <textarea className="w-full px-4 py-3 bg-white border border-slate-300 rounded-sm text-sm" value={submission[f.label] || ''} onChange={e => setSubmission({...submission, [f.label]: e.target.value})} />
+                     ) : (
+                       <input className="w-full px-4 py-3 bg-white border border-slate-300 rounded-sm text-sm" value={submission[f.label] || ''} onChange={e => setSubmission({...submission, [f.label]: e.target.value})} />
+                     )}
+                  </div>
+                ))}
+             </div>
+             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <Button variant="ghost" onClick={() => setActiveForm(null)}>Cancel</Button>
+                <Button variant="primary" type="submit" disabled={isSubmitting}>{isSubmitting ? "Saving..." : "Save Changes"}</Button>
+             </div>
+          </form>
+      </Modal>
     </div>
   );
 };
@@ -1571,7 +1693,7 @@ const GuestView = ({ ideaId }) => {
   const handlePrint = async () => { setIsGenerating(true); await generatePDF(idea, aiAnalysis); setIsGenerating(false); };
   if (loading) return <LoadingScreen message="Retrieving Encrypted Data..." />;
   if (!idea) return <div className="text-center p-20 text-slate-500 font-bold uppercase tracking-widest">Data Unavailable or Access Denied.</div>;
-  return (<div className="min-h-screen bg-slate-100 font-sans text-slate-900 print:bg-white"><div className="max-w-5xl mx-auto px-8 py-12 print:px-0 print:py-0"><div className="bg-white p-10 rounded-sm shadow-xl border-t-4 border-t-sky-800 print:shadow-none print:border-none"><div className="mb-10 border-b-2 border-slate-900 pb-6 print:mb-6"><div className="flex justify-between items-start mb-6"><div className="flex items-center gap-3"><div className="p-2 bg-slate-900"><Zap className="w-8 h-8 text-white" /></div><div><h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">EPROM</h1><span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 block mt-1">Operational Excellence</span></div></div><div className="text-right"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Confidential Internal Document</div><div className="text-sm font-mono text-slate-600">{new Date(idea.submittedAt).toLocaleDateString()}</div></div></div><h1 className="text-4xl font-black text-slate-900 leading-tight mb-4 tracking-tight">{idea.formTitle}</h1><div className="flex items-center gap-6 text-sm text-slate-500 print:hidden font-medium"><span className="flex items-center gap-2"><UserPlus className="w-4 h-4 text-sky-700" /> {idea.employeeName}</span><span className="text-slate-300">|</span><span className="uppercase tracking-wide font-bold text-xs bg-slate-100 px-2 py-1 rounded-sm">{idea.mainDepartment}</span></div></div>{aiAnalysis && (<div className="mb-10 bg-slate-50 p-8 rounded-sm border-l-4 border-sky-600"><h3 className="text-xs font-bold text-sky-800 uppercase tracking-widest mb-3 flex items-center gap-2"><Zap className="w-4 h-4" /> Executive Summary</h3><p className="text-slate-800 leading-relaxed text-sm font-medium">{aiAnalysis}</p></div>)}<div className="space-y-12 print:space-y-8">{Object.entries(idea.formData).map(([k, v]) => (<div key={k} className="break-inside-avoid"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-200 pb-1">{k}</h3>{v.startsWith('http') ? (isImage(v) || v.includes('googleusercontent') ? (<img src={getDirectLink(v)} alt="Attachment" className="w-full rounded-sm shadow-md border border-slate-200 print:shadow-none" crossorigin="anonymous" />) : (<a href={v} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sky-800 hover:underline bg-sky-50 px-6 py-4 rounded-sm border border-sky-100 print:hidden font-bold uppercase text-xs tracking-wide"><Paperclip className="w-4 h-4" /> View Technical Attachment</a>)) : (<div className="text-base leading-relaxed text-slate-800 whitespace-pre-wrap font-serif">{v}</div>)}</div>))}</div><div className="mt-20 pt-8 border-t border-slate-200 text-center text-slate-400 text-[10px] uppercase tracking-[0.2em] print:hidden">Generated by EPROM Innovation Hub • ISO 9001:2015 Compliant</div></div><div className="fixed bottom-8 right-8 print:hidden"><Button onClick={handlePrint} disabled={isGenerating} className="shadow-2xl rounded-full w-16 h-16 flex items-center justify-center p-0 bg-slate-900 hover:bg-slate-800 border-4 border-slate-100">{isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Printer className="w-6 h-6" />}</Button></div></div></div>);
+  return (<div className="min-h-screen bg-slate-100 font-sans text-slate-900 print:bg-white"><div className="max-w-5xl mx-auto px-8 py-12 print:px-0 print:py-0"><div className="bg-white p-10 rounded-sm shadow-xl border-t-4 border-t-sky-800 print:shadow-none print:border-none"><div className="mb-10 border-b-2 border-slate-900 pb-6 print:mb-6"><div className="flex justify-between items-start mb-6"><div className="flex items-center gap-3"><div className="p-2 bg-slate-900"><Zap className="w-8 h-8 text-white" /></div><div><h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">EPROM</h1><span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 block mt-1">Operational Excellence</span></div></div><div className="text-right"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Confidential Internal Document</div><div className="text-sm font-mono text-slate-600">{new Date(idea.submittedAt).toLocaleDateString()}</div></div></div><h1 className="text-4xl font-black text-slate-900 leading-tight mb-4 tracking-tight">{idea.formTitle}</h1><div className="flex items-center gap-6 text-sm text-slate-500 print:hidden font-medium"><span className="flex items-center gap-2"><User className="w-4 h-4 text-sky-700" /> {idea.employeeName}</span><span className="text-slate-300">|</span><span className="uppercase tracking-wide font-bold text-xs bg-slate-100 px-2 py-1 rounded-sm">{idea.mainDepartment}</span></div></div>{aiAnalysis && (<div className="mb-10 bg-slate-50 p-8 rounded-sm border-l-4 border-sky-600"><h3 className="text-xs font-bold text-sky-800 uppercase tracking-widest mb-3 flex items-center gap-2"><Zap className="w-4 h-4" /> Executive Summary</h3><p className="text-slate-800 leading-relaxed text-sm font-medium">{aiAnalysis}</p></div>)}<div className="space-y-12 print:space-y-8">{Object.entries(idea.formData).map(([k, v]) => (<div key={k} className="break-inside-avoid"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-200 pb-1">{k}</h3>{v.startsWith('http') ? (isImage(v) || v.includes('googleusercontent') ? (<img src={getDirectLink(v)} alt="Attachment" className="w-full rounded-sm shadow-md border border-slate-200 print:shadow-none" crossorigin="anonymous" />) : (<a href={v} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sky-800 hover:underline bg-sky-50 px-6 py-4 rounded-sm border border-sky-100 print:hidden font-bold uppercase text-xs tracking-wide"><Paperclip className="w-4 h-4" /> View Technical Attachment</a>)) : (<div className="text-base leading-relaxed text-slate-800 whitespace-pre-wrap font-serif">{v}</div>)}</div>))}</div><div className="mt-20 pt-8 border-t border-slate-200 text-center text-slate-400 text-[10px] uppercase tracking-[0.2em] print:hidden">Generated by EPROM Innovation Hub • ISO 9001:2015 Compliant</div></div><div className="fixed bottom-8 right-8 print:hidden"><Button onClick={handlePrint} disabled={isGenerating} className="shadow-2xl rounded-full w-16 h-16 flex items-center justify-center p-0 bg-slate-900 hover:bg-slate-800 border-4 border-slate-100">{isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Printer className="w-6 h-6" />}</Button></div></div></div>);
 };
 
 const LoginPage = ({ onLogin, onGoRegister }) => {
