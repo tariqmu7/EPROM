@@ -10,8 +10,8 @@ import {
 import { 
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
-  UserPlus, Layout, ChevronDown, Send, 
-  X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, Target, Award, AlertCircle, Handshake, Copy, Link as LinkIcon, Activity, Zap, Clock, AlertTriangle, User, Star, Image as ImageIcon
+  Layout, ChevronDown, Send, 
+  X, Upload, ExternalLink, Paperclip, Loader2, Pencil, Save, Share2, Globe, Lock, Eye, Printer, Target, Award, AlertCircle, Handshake, Copy, Link as LinkIcon, Activity, Zap, Clock, AlertTriangle, User, Star, Image as ImageIcon
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -1417,7 +1417,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                          </div>
                          {coverPhoto ? (
                             <div className="relative group">
-                               <img src={coverPhoto} alt="Cover" className="w-full h-32 object-cover rounded-sm border border-slate-300" />
+                               <img src={getDirectLink(coverPhoto)} alt="Cover" className="w-full h-32 object-cover rounded-sm border border-slate-300" />
                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                                   <button type="button" onClick={() => setCoverPhoto(null)} className="text-white text-xs font-bold bg-red-600 px-3 py-1 rounded-sm">Remove</button>
                                </div>
