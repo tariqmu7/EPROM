@@ -11,7 +11,7 @@ import {
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
   UserPlus, Layout, ChevronDown, ChevronUp, Send, 
-  Settings, Search, Menu, ImageOff, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, FileDown, Sparkles, BrainCircuit, Rocket, ArrowLeft, Target, Award, BarChart3, WifiOff, ChevronLeft, ChevronRight, AlertCircle, Handshake, ShieldAlert, Copy, Link as LinkIcon, Droplet, Flame, Gauge, HardHat, Activity, Factory
+  Settings, Search, Menu, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, Target, Award, ChevronLeft, ChevronRight, AlertCircle, Handshake, Copy, Link as LinkIcon, Activity, Zap, Clock, Key, AlertTriangle, User, Image, Star
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -171,6 +171,9 @@ const checkDuplicates = async (newTitle, newDesc, category) => {
 
 const getDirectLink = (url) => {
   if (!url) return '';
+  // Check if it's a base64 data URL
+  if (url.startsWith('data:image')) return url;
+  
   if (url.includes('drive.google.com') && url.includes('/d/')) {
     const id = url.match(/\/d\/(.*?)\//)?.[1] || url.match(/\/d\/(.*?)($|\?)/)?.[1];
     if (id) {
@@ -243,6 +246,12 @@ const generatePDF = (idea, analysisText = '') => {
         </div>
       </div>
 
+      ${idea.coverImage ? `
+        <div style="margin-bottom: 30px; text-align: center;">
+          <img src="${getDirectLink(idea.coverImage)}" style="max-width: 100%; max-height: 400px; border-radius: 4px; border: 1px solid #e2e8f0;" crossorigin="anonymous" />
+        </div>
+      ` : ''}
+
       ${analysisHtml}
       ${evaluationHtml}
 
@@ -279,7 +288,7 @@ const LoadingScreen = ({ message = "Initializing System...", onRetry }) => (
     <div className="relative">
       <div className="w-12 h-12 border-4 border-slate-700 border-t-sky-500 rounded-full animate-spin mb-4"></div>
       <div className="absolute inset-0 flex items-center justify-center">
-        <Droplet className="w-4 h-4 text-sky-500" />
+        <Zap className="w-4 h-4 text-sky-500" />
       </div>
     </div>
     <div className="text-xs font-bold tracking-widest uppercase text-slate-400 mb-4">{message}</div>
@@ -371,15 +380,17 @@ const InnovationCarousel = ({ variant = 'full' }) => {
   }, []);
 
   useEffect(() => {
-    if (slides.length <= 1) return;
-    const interval = setInterval(() => setCurrent(c => (c + 1) % slides.length), 8000);
+    let interval;
+    if (slides.length > 1) {
+       interval = setInterval(() => setCurrent(c => (c + 1) % slides.length), 8000);
+    }
     return () => clearInterval(interval);
   }, [slides.length]);
 
   if (slides.length === 0) return (
-    <div className={`bg-slate-900 flex flex-col items-center justify-center text-center p-8 ${variant === 'full' ? 'h-full' : 'h-48 rounded-sm'} relative overflow-hidden`}>
+    <div className={`bg-slate-900 flex flex-col items-center justify-center text-center p-8 ${variant === 'full' ? 'h-full' : 'h-64 rounded-sm'} relative overflow-hidden`}>
       <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
-      <Factory className="w-12 h-12 text-sky-600 mb-4 relative z-10" />
+      <Briefcase className="w-12 h-12 text-sky-600 mb-4 relative z-10" />
       <h3 className="text-xl font-bold text-white mb-2 relative z-10">Operational Excellence</h3>
       <p className="text-slate-400 max-w-sm text-sm relative z-10">Driving efficiency and safety through innovation.</p>
     </div>
@@ -387,21 +398,41 @@ const InnovationCarousel = ({ variant = 'full' }) => {
 
   const slide = slides[current];
   return (
-    <div className={`relative overflow-hidden group bg-slate-900 ${variant === 'full' ? 'h-full' : 'h-64 rounded-sm shadow-lg border-b-4 border-sky-600'}`}>
-      {/* Industrial Background Effect */}
-      <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-sky-900 via-slate-900 to-black"></div>
-      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-5"></div>
-      
-      <div className="absolute bottom-0 left-0 right-0 p-8 z-10 bg-gradient-to-t from-black/90 via-black/50 to-transparent">
-        <div className="flex items-center gap-2 mb-3">
-           <span className="bg-sky-700 text-white text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-widest inline-block">{slide.category}</span>
-           <span className="text-slate-400 text-[10px] uppercase font-bold tracking-widest flex items-center gap-1"><Activity className="w-3 h-3" /> Active Campaign</span>
+    <div className={`relative overflow-hidden group bg-slate-900 ${variant === 'full' ? 'h-full' : 'h-96 rounded-sm shadow-xl border-b-8 border-sky-600'}`}>
+      {/* Background Image Logic */}
+      {slide.coverImage ? (
+        <div className="absolute inset-0 bg-cover bg-center transition-all duration-1000 transform scale-105 group-hover:scale-100" style={{ backgroundImage: `url(${getDirectLink(slide.coverImage)})` }}>
+           <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/80 to-slate-900/40"></div>
         </div>
-        <h2 className="font-bold text-white leading-tight mb-3 text-2xl font-sans tracking-tight">{slide.formTitle}</h2>
-        <p className="text-slate-300 text-xs leading-relaxed line-clamp-2 mb-4 font-mono max-w-2xl border-l-2 border-sky-500 pl-3">{slide.aiSummary || "An innovative proposal for operational improvement."}</p>
-        <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-          <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-white text-[10px]">{slide.employeeName?.[0]}</div>
-          <span>{slide.employeeName}</span>
+      ) : (
+        <>
+          <div className="absolute inset-0 opacity-30 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-sky-800 via-slate-900 to-black"></div>
+          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-10"></div>
+        </>
+      )}
+      
+      <div className="absolute bottom-0 left-0 right-0 p-10 z-10">
+        <div className="max-w-4xl">
+          <div className="flex items-center gap-3 mb-4">
+             <span className="bg-sky-600/90 backdrop-blur text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest inline-flex items-center gap-1 shadow-lg">
+                <Briefcase className="w-3 h-3" /> {slide.category}
+             </span>
+             <span className="text-sky-300 text-[10px] uppercase font-bold tracking-widest flex items-center gap-1 bg-slate-900/50 px-2 py-1 rounded-full">
+                <Activity className="w-3 h-3" /> Featured Initiative
+             </span>
+          </div>
+          <h2 className="font-black text-white leading-tight mb-4 text-4xl font-sans tracking-tight drop-shadow-md">{slide.formTitle}</h2>
+          <p className="text-slate-200 text-sm leading-relaxed line-clamp-3 mb-6 font-medium max-w-2xl border-l-4 border-sky-500 pl-4 bg-gradient-to-r from-slate-900/50 to-transparent p-2 rounded-r-lg">
+             {slide.aiSummary || Object.values(slide.formData)[0]?.toString().substring(0, 150) + "..."}
+          </p>
+          <div className="flex items-center gap-4 text-xs font-bold uppercase tracking-wider text-slate-300">
+            <div className="flex items-center gap-2">
+               <div className="w-8 h-8 rounded-full bg-slate-800 border-2 border-sky-500/50 flex items-center justify-center text-white text-[10px] shadow-lg">{slide.employeeName?.[0]}</div>
+               <span>{slide.employeeName}</span>
+            </div>
+            <span className="w-1 h-1 bg-slate-500 rounded-full"></span>
+            <span className="text-sky-400">{slide.mainDepartment}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -546,45 +577,63 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
 
   return (
     <>
-    <Card 
-      onClick={() => setShowModal(true)} 
-      className={`transition-all duration-300 hover:shadow-lg cursor-pointer group border-l-[6px] ${idea.duplicateFlag ? 'border-l-amber-500' : isManager && canApprove && idea.status === STATUS.PENDING ? 'border-l-sky-500' : 'border-l-slate-300'}`}
-    >
-      <div className="p-5">
-        <div className="flex justify-between items-start">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-3">
-              <Badge status={idea.status} isPublic={idea.isPublic} rating={idea.rating} isCollab={!!idea.collaborationGroupId} />
-              {idea.duplicateFlag && (
+    <div onClick={() => setShowModal(true)} className={`bg-white rounded-sm shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer group flex flex-col h-full border ${idea.duplicateFlag ? 'border-amber-400' : 'border-slate-200'}`}>
+      {/* Card Image Header */}
+      <div className="h-40 w-full bg-slate-100 relative overflow-hidden shrink-0">
+         {idea.coverImage ? (
+            <div className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-110" style={{ backgroundImage: `url(${getDirectLink(idea.coverImage)})` }}></div>
+         ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center">
+               <Briefcase className="w-12 h-12 text-slate-400 opacity-50" />
+            </div>
+         )}
+         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+         <div className="absolute bottom-3 left-4 right-4">
+            <h4 className="font-bold text-white text-lg leading-tight truncate shadow-sm font-sans">{idea.formTitle}</h4>
+            <div className="flex items-center gap-2 mt-1">
+               <span className="text-[10px] font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1"><User className="w-3 h-3" /> {idea.employeeName}</span>
+            </div>
+         </div>
+         <div className="absolute top-3 right-3 bg-black/40 backdrop-blur-md text-white text-[9px] font-mono px-2 py-1 rounded-sm border border-white/20">
+            ID: {publicId}
+         </div>
+      </div>
+
+      <div className="p-5 flex-1 flex flex-col">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+           <Badge status={idea.status} isPublic={idea.isPublic} rating={idea.rating} isCollab={!!idea.collaborationGroupId} />
+           {idea.duplicateFlag && (
                 <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-sm flex items-center gap-1 border border-amber-200 uppercase tracking-wide">
-                  <ShieldAlert className="w-3 h-3" /> Duplicate Risk
+                  <AlertTriangle className="w-3 h-3" /> Duplicate Risk
                 </span>
-              )}
-            </div>
-            <h4 className="font-bold text-base text-slate-800 leading-tight mb-2 truncate pr-4 font-sans">{idea.formTitle}</h4>
-            <div className="flex items-center gap-3 text-xs text-slate-500 font-medium">
-              <span className="flex items-center gap-1"><HardHat className="w-3 h-3" /> {idea.employeeName}</span>
-              <span className="text-slate-300">|</span>
-              <span className="font-mono">{new Date(idea.submittedAt).toLocaleDateString()}</span>
-              {idea.collaborators?.length > 0 && (
-                <span className="ml-2 flex items-center gap-1 text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded-sm border border-sky-100">
-                  <Users className="w-3 h-3" /> +{idea.collaborators.length}
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            <div className="text-[10px] font-bold text-slate-300 font-mono tracking-wider bg-slate-50 px-1.5 rounded-sm" title="Unique ID">ID: {publicId}</div>
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400">
-              <ExternalLink className="w-4 h-4" />
-            </div>
-          </div>
+           )}
+        </div>
+        
+        <div className="flex-1">
+           <div className="text-xs text-slate-500 font-medium line-clamp-3 leading-relaxed mb-4">
+              {Object.values(idea.formData).find(val => typeof val === 'string' && val.length > 50) || "Click to view full proposal details..."}
+           </div>
+        </div>
+
+        <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400 font-medium mt-auto">
+           <span className="flex items-center gap-1">{idea.mainDepartment}</span>
+           <span className="font-mono">{new Date(idea.submittedAt).toLocaleDateString()}</span>
         </div>
       </div>
-    </Card>
+    </div>
 
+    {/* ... Modal Logic (unchanged from previous step, just reusing) ... */}
     <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={idea.formTitle}>
         <div className="mb-8 pb-6 border-b border-slate-200">
+           {idea.coverImage && (
+              <div className="mb-6 rounded-sm overflow-hidden h-48 w-full relative border border-slate-200">
+                 <img src={getDirectLink(idea.coverImage)} alt="Cover" className="w-full h-full object-cover" />
+                 <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent flex items-end p-4">
+                    <span className="text-white text-xs font-bold uppercase tracking-widest bg-black/50 px-2 py-1 rounded backdrop-blur-sm">Project Cover Image</span>
+                 </div>
+              </div>
+           )}
+
            {/* Manager: Collaboration Approval Context */}
            {isManager && idea.collaborationGroupId && idea.status === STATUS.PENDING && (
              <div className="bg-indigo-50 border-l-4 border-indigo-500 p-4 mb-6 animate-fade-in shadow-sm">
@@ -620,7 +669,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
            {/* Duplicate Warning for Managers */}
            {isManager && idea.duplicateFlag && (
              <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 flex gap-4 animate-fade-in shadow-sm">
-               <div className="bg-white p-2 rounded-full h-fit border border-amber-100 shadow-sm"><ShieldAlert className="w-5 h-5 text-amber-600" /></div>
+               <div className="bg-white p-2 rounded-full h-fit border border-amber-100 shadow-sm"><AlertTriangle className="w-5 h-5 text-amber-600" /></div>
                <div className="flex-1">
                  <h4 className="text-sm font-bold text-amber-900 uppercase tracking-wide">Optimization Alert: Potential Redundancy</h4>
                  <p className="text-xs text-amber-800 mt-1 leading-relaxed">
@@ -726,7 +775,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
               {!aiAnalysis ? (
                 <Button variant="ai" onClick={handleAnalyze} disabled={isAnalyzing} className="w-full h-14 shadow-lg flex-col gap-1 border-indigo-200">
                   <div className="flex items-center gap-2">
-                    {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <BrainCircuit className="w-4 h-4" />}
+                    {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
                     <span>{isAnalyzing ? "Processing Technical Data..." : "Run AI Technical Assessment"}</span>
                   </div>
                   <span className="text-[10px] opacity-70 font-normal normal-case">Generates Summary, Benefits & Risk Analysis</span>
@@ -734,7 +783,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
               ) : (
                 <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 p-6 rounded-sm shadow-sm relative overflow-hidden">
                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-                   <h4 className="font-bold text-indigo-900 flex items-center gap-2 mb-4 text-sm uppercase tracking-wider"><Sparkles className="w-4 h-4" /> AI Technical Review</h4>
+                   <h4 className="font-bold text-indigo-900 flex items-center gap-2 mb-4 text-sm uppercase tracking-wider"><Star className="w-4 h-4" /> AI Technical Review</h4>
                    <div className="whitespace-pre-wrap text-sm text-slate-700 leading-relaxed font-mono text-justify">{aiAnalysis}</div>
                 </div>
               )}
@@ -792,6 +841,8 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
   );
 };
 
+// ... (CollaborationHub, KPIManager, UserManagement etc. same as previous) ...
+// [re-including for completeness]
 const CollaborationHub = ({ currentUser, ideas, onJoinTeam, onCollaborate }) => {
   // Filter for ideas that are public/active for collaboration
   const openIdeas = ideas.filter(i => 
@@ -1004,7 +1055,8 @@ const EmployeePortal = ({ currentUser, showToast }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [originalStatus, setOriginalStatus] = useState(null);
 
-  // Collaboration State
+  // New features state
+  const [coverPhoto, setCoverPhoto] = useState(null);
   const [isLinking, setIsLinking] = useState(false);
   const [linkedId, setLinkedId] = useState('');
 
@@ -1027,6 +1079,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
       setSubDepts(idea.subDepartments || []);
       setEditingIdeaId(idea.id);
       setOriginalStatus(idea.status);
+      setCoverPhoto(idea.coverImage || null); // Load existing cover photo
       setIsLinking(!!idea.collaborationGroupId);
       setLinkedId(''); 
     } else {
@@ -1035,7 +1088,6 @@ const EmployeePortal = ({ currentUser, showToast }) => {
   };
 
   const handleJoinGroup = (targetId) => {
-    // Switch to new tab, enable linking, set ID
     setTab('new');
     setIsLinking(true);
     setLinkedId(targetId);
@@ -1047,7 +1099,6 @@ const EmployeePortal = ({ currentUser, showToast }) => {
     showToast("Proposal record deleted.");
   };
 
-  // ... handleFileUpload, handleRefine, handleSubmit (same as previous) ...
   const handleFileUpload = useCallback(async (file, label) => {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) { showToast("File limit exceeded (Max 10MB).", "error"); return; }
@@ -1068,6 +1119,27 @@ const EmployeePortal = ({ currentUser, showToast }) => {
     };
   }, [showToast]);
 
+  // Dedicated handler for cover photo
+  const handleCoverUpload = useCallback(async (file) => {
+    if (!file) return;
+    if (file.size > 700 * 1024) { showToast("Image too large (Max 700KB for Cover).", "error"); return; }
+    setUploading(true);
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      // Direct Base64 storage in Firestore for Covers (simpler for this demo than external storage)
+      // In production, use Firebase Storage.
+      const base64 = reader.result; // This is the Data URL directly
+      setCoverPhoto(base64);
+      setUploading(false);
+      showToast("Cover photo attached.", "success");
+    };
+    reader.onerror = () => {
+       showToast("Failed to read file.", "error");
+       setUploading(false);
+    };
+  }, [showToast]);
+
   const handleRefine = async (fieldLabel, currentText) => {
     if (!currentText) return;
     const prompt = `Rewrite the following technical description to be concise, professional, and suitable for an Oil & Gas engineering proposal:\n\n"${currentText}"`;
@@ -1085,11 +1157,8 @@ const EmployeePortal = ({ currentUser, showToast }) => {
     let groupIdToUse = null;
 
     if (isLinking && linkedId) {
-       // Look up the linked idea
        const q = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), where('publicId', '==', linkedId.trim().toUpperCase()));
        const querySnapshot = await getDocs(q);
-
-       // Fallback if user entered internal ID instead of public ID
        let linkedDoc = null;
        if (querySnapshot.empty) {
           const q2 = query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS), where('__name__', '==', linkedId.trim()));
@@ -1106,13 +1175,10 @@ const EmployeePortal = ({ currentUser, showToast }) => {
        }
 
        const linkedData = linkedDoc.data();
-
        if (linkedData.collaborationGroupId) {
           groupIdToUse = linkedData.collaborationGroupId;
        } else {
-          // Determine new Group ID
           groupIdToUse = crypto.randomUUID();
-          // Back-fill the referenced idea to join this new group
           await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, linkedDoc.id), {
              collaborationGroupId: groupIdToUse
           });
@@ -1121,16 +1187,13 @@ const EmployeePortal = ({ currentUser, showToast }) => {
     }
 
     showToast("AI Audit: Checking for redundancies...", "ai");
-    
-    // AI Duplicate Check
     const duplicateResult = await checkDuplicates(activeForm.title, JSON.stringify(submission), activeForm.category);
-
     const newPublicId = generatePublicId();
 
     const ideaData = {
       employeeId: currentUser.id,
       employeeName: currentUser.name,
-      status: STATUS.PENDING, // Always reset status to pending on edit/submit
+      status: STATUS.PENDING,
       formTitle: activeForm.title,
       category: activeForm.category, 
       formData: submission,
@@ -1138,8 +1201,8 @@ const EmployeePortal = ({ currentUser, showToast }) => {
       subDepartments: subDepts,
       submittedAt: new Date().toISOString(),
       publicId: editingIdeaId ? (allIdeas.find(i => i.id === editingIdeaId)?.publicId || newPublicId) : newPublicId,
-      collaborationGroupId: groupIdToUse, // Link the group
-      // Save duplicate flag if AI detects one
+      collaborationGroupId: groupIdToUse,
+      coverImage: coverPhoto, // Save cover photo base64
       duplicateFlag: duplicateResult?.isDuplicate ? {
         matchId: duplicateResult.matchId,
         matchTitle: duplicateResult.matchTitle,
@@ -1160,9 +1223,10 @@ const EmployeePortal = ({ currentUser, showToast }) => {
     }
 
     setActiveForm(null); setSubmission({}); setTargetDept(''); setSubDepts([]); setEditingIdeaId(null); setIsSubmitting(false); setOriginalStatus(null);
-    setIsLinking(false); setLinkedId('');
-  }, [activeForm, currentUser, showToast, submission, subDepts, targetDept, editingIdeaId, isLinking, linkedId, allIdeas]);
+    setIsLinking(false); setLinkedId(''); setCoverPhoto(null);
+  }, [activeForm, currentUser, showToast, submission, subDepts, targetDept, editingIdeaId, isLinking, linkedId, allIdeas, coverPhoto]);
 
+  // ... (handleComment, handleUpdateComment, handleJoinTeam, toggleSubDept, handleCheckboxChange unchanged) ...
   const handleComment = useCallback(async (id, text) => {
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.IDEAS, id), { comments: arrayUnion({ id: Date.now(), author: currentUser.name, text, date: new Date().toISOString() }) });
     showToast("Technical note added");
@@ -1228,7 +1292,6 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                <p className="text-slate-500 text-sm">Select a technical category to initiate the approval workflow.</p>
             </div>
             
-            {/* Show linking context if active */}
             {isLinking && linkedId && (
                <div className="mb-6 bg-indigo-50 border border-indigo-200 p-4 rounded-sm flex items-center justify-between animate-fade-in">
                   <div className="flex items-center gap-3">
@@ -1244,7 +1307,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {forms.map(form => (
-                <button key={form.id} onClick={() => { setActiveForm(form); setEditingIdeaId(null); setSubmission({}); }} className="flex items-start p-5 bg-white border border-slate-200 rounded-sm hover:border-sky-500 hover:shadow-md transition-all text-left group">
+                <button key={form.id} onClick={() => { setActiveForm(form); setEditingIdeaId(null); setSubmission({}); setIsLinking(false); setLinkedId(''); setCoverPhoto(null); }} className="flex items-start p-5 bg-white border border-slate-200 rounded-sm hover:border-sky-500 hover:shadow-md transition-all text-left group">
                   <div className="mr-4 bg-slate-50 p-2.5 rounded-sm group-hover:bg-sky-50 transition-colors border border-slate-100">
                     <FileText className="w-5 h-5 text-slate-500 group-hover:text-sky-600" />
                   </div>
@@ -1256,7 +1319,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
               ))}
             </div>
 
-            <Modal isOpen={!!activeForm} onClose={() => { setActiveForm(null); setEditingIdeaId(null); setOriginalStatus(null); }} title={editingIdeaId ? `Revision: ${activeForm?.title}` : (activeForm?.title || "New Submission")}>
+            <Modal isOpen={!!activeForm} onClose={() => { setActiveForm(null); setEditingIdeaId(null); setOriginalStatus(null); setCoverPhoto(null); }} title={editingIdeaId ? `Revision: ${activeForm?.title}` : (activeForm?.title || "New Submission")}>
                 <form onSubmit={handleSubmit} className="space-y-8">
                   {editingIdeaId && originalStatus === STATUS.APPROVED && (
                     <div className="bg-amber-50 p-4 rounded-sm border-l-4 border-amber-500 flex items-start gap-3">
@@ -1269,41 +1332,72 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                   )}
 
                   <div className="bg-sky-50 p-4 rounded-sm border-l-4 border-sky-600 flex items-start gap-3">
-                      <BrainCircuit className="w-5 h-5 text-sky-700 mt-0.5 flex-shrink-0" />
+                      <Zap className="w-5 h-5 text-sky-700 mt-0.5 flex-shrink-0" />
                       <div>
                          <h4 className="text-sm font-bold text-sky-900">AI-Powered Audit Active</h4>
                          <p className="text-xs text-sky-800 mt-1">Your submission will be instantly audited for duplicates against the global database to prevent redundancy.</p>
                       </div>
                    </div>
 
-                   {/* Collaboration Section */}
-                   <div className="bg-slate-50 p-4 rounded-sm border border-slate-200">
-                      <label className="flex items-center gap-3 cursor-pointer group">
-                         <div className={`w-5 h-5 rounded-sm border flex items-center justify-center transition-colors ${isLinking ? 'bg-sky-700 border-sky-700' : 'bg-white border-slate-300'}`}>
-                            {isLinking && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                   {/* Cover Photo & Collaboration Section */}
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Cover Photo Upload */}
+                      <div className="bg-slate-50 p-4 rounded-sm border border-slate-200">
+                         <div className="flex justify-between items-start mb-4">
+                            <div>
+                               <span className="block text-sm font-bold text-slate-700">Project Cover Image</span>
+                               <span className="text-xs text-slate-500">Upload a visual representation of the asset/concept.</span>
+                            </div>
+                            <Image className="w-5 h-5 text-slate-400" />
                          </div>
-                         <input type="checkbox" className="hidden" checked={isLinking} onChange={e => setIsLinking(e.target.checked)} />
-                         <div>
-                            <span className="block text-sm font-bold text-slate-700">Collaboration & Linkage</span>
-                            <span className="text-xs text-slate-500">Is this proposal related to an existing initiative?</span>
-                         </div>
-                      </label>
-                      
-                      {isLinking && (
-                        <div className="mt-4 pl-8 animate-fade-in">
-                           <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Enter Related Proposal ID</label>
-                           <div className="flex gap-2">
-                             <input 
-                                type="text" 
-                                className="flex-1 px-4 py-2 border border-slate-300 rounded-sm text-sm uppercase font-mono placeholder-slate-400 focus:outline-none focus:border-sky-500" 
-                                placeholder="e.g. X9J2K1" 
-                                value={linkedId} 
-                                onChange={e => setLinkedId(e.target.value.toUpperCase())}
-                             />
-                           </div>
-                           <p className="text-[10px] text-slate-400 mt-2">Entering an ID will automatically group these proposals in the Collaboration Matrix.</p>
-                        </div>
-                      )}
+                         {coverPhoto ? (
+                            <div className="relative group">
+                               <img src={coverPhoto} alt="Cover" className="w-full h-32 object-cover rounded-sm border border-slate-300" />
+                               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                  <button type="button" onClick={() => setCoverPhoto(null)} className="text-white text-xs font-bold bg-red-600 px-3 py-1 rounded-sm">Remove</button>
+                               </div>
+                            </div>
+                         ) : (
+                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 rounded-sm cursor-pointer hover:bg-white hover:border-sky-400 transition-colors">
+                               {uploading ? (
+                                  <Loader2 className="w-6 h-6 text-sky-600 animate-spin" />
+                               ) : (
+                                  <>
+                                    <div className="bg-white p-2 rounded-full mb-2 shadow-sm"><Upload className="w-4 h-4 text-slate-400" /></div>
+                                    <span className="text-[10px] font-bold uppercase text-slate-500">Upload Image</span>
+                                  </>
+                               )}
+                               <input type="file" className="hidden" accept="image/*" onChange={(e) => handleCoverUpload(e.target.files[0])} disabled={uploading} />
+                            </label>
+                         )}
+                      </div>
+
+                      {/* Collaboration Toggle */}
+                      <div className="bg-slate-50 p-4 rounded-sm border border-slate-200">
+                          <label className="flex items-center gap-3 cursor-pointer group mb-4">
+                             <div className={`w-5 h-5 rounded-sm border flex items-center justify-center transition-colors ${isLinking ? 'bg-sky-700 border-sky-700' : 'bg-white border-slate-300'}`}>
+                                {isLinking && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                             </div>
+                             <input type="checkbox" className="hidden" checked={isLinking} onChange={e => setIsLinking(e.target.checked)} />
+                             <div>
+                                <span className="block text-sm font-bold text-slate-700">Collaboration & Linkage</span>
+                                <span className="text-xs text-slate-500">Is this related to an existing initiative?</span>
+                             </div>
+                          </label>
+                          
+                          {isLinking && (
+                            <div className="animate-fade-in">
+                               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Related Proposal ID</label>
+                               <input 
+                                  type="text" 
+                                  className="w-full px-3 py-2 border border-slate-300 rounded-sm text-sm uppercase font-mono placeholder-slate-400 focus:outline-none focus:border-sky-500" 
+                                  placeholder="e.g. X9J2K1" 
+                                  value={linkedId} 
+                                  onChange={e => setLinkedId(e.target.value.toUpperCase())}
+                               />
+                            </div>
+                          )}
+                      </div>
                    </div>
 
                   {/* Form fields rendering */}
@@ -1318,7 +1412,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                         {f.type === 'textarea' ? (
                           <div className="relative">
                             <textarea className="w-full px-4 py-3 bg-white border border-slate-300 text-slate-900 text-sm rounded-sm focus:outline-none focus:border-sky-600 focus:ring-1 focus:ring-sky-600 transition-all min-h-[140px] shadow-sm resize-y font-medium" required={f.required} value={submission[f.label] || ''} onChange={e => setSubmission({...submission, [f.label]: e.target.value})} placeholder={`Provide detailed ${f.label.toLowerCase()}...`} />
-                            <button type="button" onClick={() => handleRefine(f.label, submission[f.label])} className="absolute right-3 bottom-3 text-[10px] bg-slate-100 text-sky-700 px-2 py-1 rounded-sm border border-slate-200 flex items-center gap-1.5 hover:bg-sky-50 hover:border-sky-200 transition-all font-bold uppercase tracking-wide" title="Rewrite professionally with AI"><Sparkles className="w-3 h-3" /> AI Refine</button>
+                            <button type="button" onClick={() => handleRefine(f.label, submission[f.label])} className="absolute right-3 bottom-3 text-[10px] bg-slate-100 text-sky-700 px-2 py-1 rounded-sm border border-slate-200 flex items-center gap-1.5 hover:bg-sky-50 hover:border-sky-200 transition-all font-bold uppercase tracking-wide" title="Rewrite professionally with AI"><Zap className="w-3 h-3" /> AI Refine</button>
                           </div>
                         ) : f.type === 'dropdown' ? (
                            (f.options && f.options.length <= 5) ? (
@@ -1393,7 +1487,7 @@ const EmployeePortal = ({ currentUser, showToast }) => {
                   </div>
 
                   <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
-                      <Button variant="ghost" onClick={() => { setActiveForm(null); setEditingIdeaId(null); setOriginalStatus(null); }}>Discard</Button>
+                      <Button variant="ghost" onClick={() => { setActiveForm(null); setEditingIdeaId(null); setOriginalStatus(null); setCoverPhoto(null); }}>Discard</Button>
                       <Button variant="primary" type="submit" className="px-8 shadow-lg shadow-sky-900/20" disabled={uploading || isSubmitting}>
                         {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingIdeaId ? "Submit Revision" : "Submit Proposal")}
                       </Button>
@@ -1406,6 +1500,8 @@ const EmployeePortal = ({ currentUser, showToast }) => {
     </div>
   );
 };
+
+// --- Missing Components Restored ---
 
 const ManagerPortal = ({ currentUser, showToast }) => {
   const [ideas, setIdeas] = useState([]);
@@ -1438,8 +1534,8 @@ const ManagerPortal = ({ currentUser, showToast }) => {
       {/* Executive Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
          <StatCard label="Active Projects" value={activeCount} subtext="Currently in implementation phase" icon={Activity} color="text-emerald-600 bg-emerald-50" />
-         <StatCard label="Pending Review" value={pendingCount} subtext="Awaiting technical approval" icon={Gauge} color="text-amber-600 bg-amber-50" />
-         <StatCard label="HSE Initiatives" value={safetyCount} subtext="Safety critical improvements" icon={Flame} color="text-red-600 bg-red-50" />
+         <StatCard label="Pending Review" value={pendingCount} subtext="Awaiting technical approval" icon={Clock} color="text-amber-600 bg-amber-50" />
+         <StatCard label="HSE Initiatives" value={safetyCount} subtext="Safety critical improvements" icon={Zap} color="text-red-600 bg-red-50" />
       </div>
 
       <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 border-b border-slate-200 pb-4">
@@ -1475,12 +1571,12 @@ const GuestView = ({ ideaId }) => {
   const handlePrint = async () => { setIsGenerating(true); await generatePDF(idea, aiAnalysis); setIsGenerating(false); };
   if (loading) return <LoadingScreen message="Retrieving Encrypted Data..." />;
   if (!idea) return <div className="text-center p-20 text-slate-500 font-bold uppercase tracking-widest">Data Unavailable or Access Denied.</div>;
-  return (<div className="min-h-screen bg-slate-100 font-sans text-slate-900 print:bg-white"><div className="max-w-5xl mx-auto px-8 py-12 print:px-0 print:py-0"><div className="bg-white p-10 rounded-sm shadow-xl border-t-4 border-t-sky-800 print:shadow-none print:border-none"><div className="mb-10 border-b-2 border-slate-900 pb-6 print:mb-6"><div className="flex justify-between items-start mb-6"><div className="flex items-center gap-3"><div className="p-2 bg-slate-900"><Flame className="w-8 h-8 text-white" /></div><div><h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">EPROM</h1><span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 block mt-1">Operational Excellence</span></div></div><div className="text-right"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Confidential Internal Document</div><div className="text-sm font-mono text-slate-600">{new Date(idea.submittedAt).toLocaleDateString()}</div></div></div><h1 className="text-4xl font-black text-slate-900 leading-tight mb-4 tracking-tight">{idea.formTitle}</h1><div className="flex items-center gap-6 text-sm text-slate-500 print:hidden font-medium"><span className="flex items-center gap-2"><HardHat className="w-4 h-4 text-sky-700" /> {idea.employeeName}</span><span className="text-slate-300">|</span><span className="uppercase tracking-wide font-bold text-xs bg-slate-100 px-2 py-1 rounded-sm">{idea.mainDepartment}</span></div></div>{aiAnalysis && (<div className="mb-10 bg-slate-50 p-8 rounded-sm border-l-4 border-sky-600"><h3 className="text-xs font-bold text-sky-800 uppercase tracking-widest mb-3 flex items-center gap-2"><BrainCircuit className="w-4 h-4" /> Executive Summary</h3><p className="text-slate-800 leading-relaxed text-sm font-medium">{aiAnalysis}</p></div>)}<div className="space-y-12 print:space-y-8">{Object.entries(idea.formData).map(([k, v]) => (<div key={k} className="break-inside-avoid"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-200 pb-1">{k}</h3>{v.startsWith('http') ? (isImage(v) || v.includes('googleusercontent') ? (<img src={getDirectLink(v)} alt="Attachment" className="w-full rounded-sm shadow-md border border-slate-200 print:shadow-none" crossorigin="anonymous" />) : (<a href={v} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sky-800 hover:underline bg-sky-50 px-6 py-4 rounded-sm border border-sky-100 print:hidden font-bold uppercase text-xs tracking-wide"><Paperclip className="w-4 h-4" /> View Technical Attachment</a>)) : (<div className="text-base leading-relaxed text-slate-800 whitespace-pre-wrap font-serif">{v}</div>)}</div>))}</div><div className="mt-20 pt-8 border-t border-slate-200 text-center text-slate-400 text-[10px] uppercase tracking-[0.2em] print:hidden">Generated by EPROM Innovation Hub • ISO 9001:2015 Compliant</div></div><div className="fixed bottom-8 right-8 print:hidden"><Button onClick={handlePrint} disabled={isGenerating} className="shadow-2xl rounded-full w-16 h-16 flex items-center justify-center p-0 bg-slate-900 hover:bg-slate-800 border-4 border-slate-100">{isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Printer className="w-6 h-6" />}</Button></div></div></div>);
+  return (<div className="min-h-screen bg-slate-100 font-sans text-slate-900 print:bg-white"><div className="max-w-5xl mx-auto px-8 py-12 print:px-0 print:py-0"><div className="bg-white p-10 rounded-sm shadow-xl border-t-4 border-t-sky-800 print:shadow-none print:border-none"><div className="mb-10 border-b-2 border-slate-900 pb-6 print:mb-6"><div className="flex justify-between items-start mb-6"><div className="flex items-center gap-3"><div className="p-2 bg-slate-900"><Zap className="w-8 h-8 text-white" /></div><div><h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">EPROM</h1><span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 block mt-1">Operational Excellence</span></div></div><div className="text-right"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Confidential Internal Document</div><div className="text-sm font-mono text-slate-600">{new Date(idea.submittedAt).toLocaleDateString()}</div></div></div><h1 className="text-4xl font-black text-slate-900 leading-tight mb-4 tracking-tight">{idea.formTitle}</h1><div className="flex items-center gap-6 text-sm text-slate-500 print:hidden font-medium"><span className="flex items-center gap-2"><UserPlus className="w-4 h-4 text-sky-700" /> {idea.employeeName}</span><span className="text-slate-300">|</span><span className="uppercase tracking-wide font-bold text-xs bg-slate-100 px-2 py-1 rounded-sm">{idea.mainDepartment}</span></div></div>{aiAnalysis && (<div className="mb-10 bg-slate-50 p-8 rounded-sm border-l-4 border-sky-600"><h3 className="text-xs font-bold text-sky-800 uppercase tracking-widest mb-3 flex items-center gap-2"><Zap className="w-4 h-4" /> Executive Summary</h3><p className="text-slate-800 leading-relaxed text-sm font-medium">{aiAnalysis}</p></div>)}<div className="space-y-12 print:space-y-8">{Object.entries(idea.formData).map(([k, v]) => (<div key={k} className="break-inside-avoid"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-200 pb-1">{k}</h3>{v.startsWith('http') ? (isImage(v) || v.includes('googleusercontent') ? (<img src={getDirectLink(v)} alt="Attachment" className="w-full rounded-sm shadow-md border border-slate-200 print:shadow-none" crossorigin="anonymous" />) : (<a href={v} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sky-800 hover:underline bg-sky-50 px-6 py-4 rounded-sm border border-sky-100 print:hidden font-bold uppercase text-xs tracking-wide"><Paperclip className="w-4 h-4" /> View Technical Attachment</a>)) : (<div className="text-base leading-relaxed text-slate-800 whitespace-pre-wrap font-serif">{v}</div>)}</div>))}</div><div className="mt-20 pt-8 border-t border-slate-200 text-center text-slate-400 text-[10px] uppercase tracking-[0.2em] print:hidden">Generated by EPROM Innovation Hub • ISO 9001:2015 Compliant</div></div><div className="fixed bottom-8 right-8 print:hidden"><Button onClick={handlePrint} disabled={isGenerating} className="shadow-2xl rounded-full w-16 h-16 flex items-center justify-center p-0 bg-slate-900 hover:bg-slate-800 border-4 border-slate-100">{isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Printer className="w-6 h-6" />}</Button></div></div></div>);
 };
 
 const LoginPage = ({ onLogin, onGoRegister }) => {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); 
-  return (<div className="min-h-screen flex font-sans"><div className="hidden lg:flex w-1/2 bg-slate-900 relative flex-col justify-between"><InnovationCarousel variant="full" /></div><div className="w-full lg:w-1/2 bg-slate-50 flex items-center justify-center p-8"><div className="w-full max-w-md bg-white p-12 rounded-sm shadow-2xl border-t-8 border-sky-800"><div className="mb-10 lg:hidden text-center"><div className="w-16 h-16 bg-slate-900 rounded-sm mx-auto mb-4 flex items-center justify-center"><Flame className="w-8 h-8 text-white" /></div><h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">EPROM</h2></div><div className="mb-10"><h2 className="text-2xl font-bold text-slate-900 mb-2">Portal Access</h2><p className="text-slate-500 text-sm">Authorized personnel only. Please verify credentials.</p></div><form onSubmit={(e) => { e.preventDefault(); onLogin(email, password); }} className="space-y-6"><Input label="Corporate ID / Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /><Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /><Button variant="primary" type="submit" className="w-full h-12 text-sm">Secure Login</Button></form><div className="mt-8 text-center pt-6 border-t border-slate-100"><p className="text-slate-400 text-xs mb-4 uppercase tracking-wide font-bold">New Personnel?</p><Button variant="secondary" onClick={onGoRegister} className="w-full h-10 text-xs">Register for Access</Button></div></div></div></div>);
+  return (<div className="min-h-screen flex font-sans"><div className="hidden lg:flex w-1/2 bg-slate-900 relative flex-col justify-between"><InnovationCarousel variant="full" /></div><div className="w-full lg:w-1/2 bg-slate-50 flex items-center justify-center p-8"><div className="w-full max-w-md bg-white p-12 rounded-sm shadow-2xl border-t-8 border-sky-800"><div className="mb-10 lg:hidden text-center"><div className="w-16 h-16 bg-slate-900 rounded-sm mx-auto mb-4 flex items-center justify-center"><Zap className="w-8 h-8 text-white" /></div><h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">EPROM</h2></div><div className="mb-10"><h2 className="text-2xl font-bold text-slate-900 mb-2">Portal Access</h2><p className="text-slate-500 text-sm">Authorized personnel only. Please verify credentials.</p></div><form onSubmit={(e) => { e.preventDefault(); onLogin(email, password); }} className="space-y-6"><Input label="Corporate ID / Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /><Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /><Button variant="primary" type="submit" className="w-full h-12 text-sm">Secure Login</Button></form><div className="mt-8 text-center pt-6 border-t border-slate-100"><p className="text-slate-400 text-xs mb-4 uppercase tracking-wide font-bold">New Personnel?</p><Button variant="secondary" onClick={onGoRegister} className="w-full h-10 text-xs">Register for Access</Button></div></div></div></div>);
 };
 
 const RegisterPage = ({ onRegister, onBack }) => {
@@ -1523,7 +1619,7 @@ export default function IdeaBankApp() {
   if (view === 'guest_view') return <GuestView ideaId={sharedIdeaId} />;
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-sans selection:bg-sky-200">
-      {toast && (<div className={`fixed top-6 right-6 z-50 px-6 py-4 rounded-sm shadow-2xl border-l-4 text-sm font-bold tracking-wide animate-fade-in uppercase ${toast.type === 'error' ? 'bg-white border-red-600 text-red-800' : toast.type === 'ai' ? 'bg-white border-indigo-600 text-indigo-800' : 'bg-white border-emerald-600 text-emerald-800'}`}>{toast.type === 'ai' && <BrainCircuit className="w-4 h-4 inline-block mr-2 text-indigo-600" />}{toast.message}</div>)}
+      {toast && (<div className={`fixed top-6 right-6 z-50 px-6 py-4 rounded-sm shadow-2xl border-l-4 text-sm font-bold tracking-wide animate-fade-in uppercase ${toast.type === 'error' ? 'bg-white border-red-600 text-red-800' : toast.type === 'ai' ? 'bg-white border-indigo-600 text-indigo-800' : 'bg-white border-emerald-600 text-emerald-800'}`}>{toast.type === 'ai' && <Zap className="w-4 h-4 inline-block mr-2 text-indigo-600" />}{toast.message}</div>)}
       {view === 'login' && (<div className="relative"><LoginPage onLogin={handleLogin} onGoRegister={() => setView('register')} /></div>)}
       {view === 'register' && <RegisterPage onRegister={handleRegister} onBack={() => setView('login')} />}
       {currentUser && (
@@ -1532,7 +1628,7 @@ export default function IdeaBankApp() {
             <div className="flex items-center justify-between h-full px-8">
               <div className="flex items-center gap-6">
                 <div className="flex items-center gap-3">
-                  <div className="bg-white p-1 rounded-sm"><Flame className="w-6 h-6 text-slate-900" /></div>
+                  <div className="bg-white p-1 rounded-sm"><Zap className="w-6 h-6 text-slate-900" /></div>
                   <div className="flex flex-col"><span className="font-black text-xl leading-none tracking-tighter">EPROM</span><span className="text-[9px] text-sky-400 uppercase tracking-[0.2em] font-bold">Innovation Hub</span></div>
                 </div>
                 <div className="h-8 w-px bg-slate-700 mx-2"></div>
