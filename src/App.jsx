@@ -10,8 +10,8 @@ import {
 import { 
   Users, FileText, CheckCircle, XCircle, 
   LogOut, Plus, Trash2, MessageSquare, Briefcase, 
-  UserPlus, Layout, ChevronDown, ChevronUp, Send, 
-  Settings, Search, Menu, X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, Target, Award, ChevronLeft, ChevronRight, AlertCircle, Handshake, Copy, Link as LinkIcon, Activity, Zap, Clock, Key, AlertTriangle, User, Image as ImageIcon, Star
+  UserPlus, Layout, ChevronDown, Send, 
+  X, Upload, ExternalLink, Paperclip, Loader2, FileCheck, Pencil, Save, Share2, Globe, Lock, Eye, Printer, Target, Award, AlertCircle, Handshake, Copy, Link as LinkIcon, Activity, Zap, Clock, AlertTriangle, User, Star, Image as ImageIcon
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -134,7 +134,7 @@ const checkDuplicates = async (newTitle, newDesc, category) => {
 
     const existingIdeas = snap.docs.slice(0, 20).map(d => ({
       id: d.id,
-      title: d.data().formTitle,
+      title: getIdeaTitle(d.data()),
       desc: JSON.stringify(d.data().formData).substring(0, 300)
     }));
 
@@ -169,6 +169,12 @@ const checkDuplicates = async (newTitle, newDesc, category) => {
   }
 };
 
+const getIdeaTitle = (idea) => {
+  if (!idea) return "Untitled";
+  // Prioritize the user-entered title from formData, fallback to the form template title
+  return idea.formData?.["Initiative Title"] || idea.formData?.["Title"] || idea.formTitle;
+};
+
 const getDirectLink = (url) => {
   if (!url) return '';
   // Check if it's a base64 data URL
@@ -190,6 +196,7 @@ const generatePDF = (idea, analysisText = '') => {
   }
 
   const element = document.createElement('div');
+  const displayTitle = getIdeaTitle(idea);
   
   let evaluationHtml = '';
   if (idea.rating) {
@@ -237,7 +244,7 @@ const generatePDF = (idea, analysisText = '') => {
       </div>
       
       <div style="background-color: #f8fafc; padding: 20px; border: 1px solid #e2e8f0; margin-bottom: 30px;">
-        <h2 style="font-size: 20px; font-weight: bold; color: #0f172a; margin-top: 0;">${idea.formTitle}</h2>
+        <h2 style="font-size: 20px; font-weight: bold; color: #0f172a; margin-top: 0;">${displayTitle}</h2>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; font-size: 12px;">
           <div><span style="color:#64748b; text-transform:uppercase; font-size:10px; font-weight:bold;">Proposer</span><br/>${idea.employeeName}</div>
           <div><span style="color:#64748b; text-transform:uppercase; font-size:10px; font-weight:bold;">Department</span><br/>${idea.mainDepartment}</div>
@@ -397,6 +404,8 @@ const InnovationCarousel = ({ variant = 'full' }) => {
   );
 
   const slide = slides[current];
+  const displayTitle = getIdeaTitle(slide);
+
   return (
     <div className={`relative overflow-hidden group bg-slate-900 ${variant === 'full' ? 'h-full' : 'h-96 rounded-sm shadow-xl border-b-8 border-sky-600'}`}>
       {/* Background Image Logic */}
@@ -421,7 +430,7 @@ const InnovationCarousel = ({ variant = 'full' }) => {
                 <Activity className="w-3 h-3" /> Featured Initiative
              </span>
           </div>
-          <h2 className="font-black text-white leading-tight mb-4 text-4xl font-sans tracking-tight drop-shadow-md">{slide.formTitle}</h2>
+          <h2 className="font-black text-white leading-tight mb-4 text-4xl font-sans tracking-tight drop-shadow-md">{displayTitle}</h2>
           <p className="text-slate-200 text-sm leading-relaxed line-clamp-3 mb-6 font-medium max-w-2xl border-l-4 border-sky-500 pl-4 bg-gradient-to-r from-slate-900/50 to-transparent p-2 rounded-r-lg">
              {slide.aiSummary || Object.values(slide.formData)[0]?.toString().substring(0, 150) + "..."}
           </p>
@@ -574,6 +583,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
   const isCollaborator = idea.collaborators?.some(c => c.id === currentUser?.id);
   const isOwner = idea.employeeId === currentUser?.id;
   const publicId = idea.publicId || "N/A";
+  const displayTitle = getIdeaTitle(idea);
 
   return (
     <>
@@ -589,7 +599,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
          )}
          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
          <div className="absolute bottom-3 left-4 right-4">
-            <h4 className="font-bold text-white text-lg leading-tight truncate shadow-sm font-sans">{idea.formTitle}</h4>
+            <h4 className="font-bold text-white text-lg leading-tight truncate shadow-sm font-sans">{displayTitle}</h4>
             <div className="flex items-center gap-2 mt-1">
                <span className="text-[10px] font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1"><User className="w-3 h-3" /> {idea.employeeName}</span>
             </div>
@@ -623,7 +633,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
     </div>
 
     {/* ... Modal Logic ... */}
-    <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={idea.formTitle}>
+    <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={displayTitle}>
         <div className="mb-8 pb-6 border-b border-slate-200">
            {idea.coverImage && (
               <div className="mb-6 rounded-sm overflow-hidden h-48 w-full relative border border-slate-200">
@@ -650,7 +660,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
                            <ul className="mt-1 space-y-1">
                              {groupPeers.map(p => (
                                <li key={p.id} className="text-xs text-indigo-800 flex items-center gap-2">
-                                 <CheckCircle className="w-3 h-3 text-emerald-600" /> {p.formTitle} <span className="opacity-50">({p.employeeName})</span>
+                                 <CheckCircle className="w-3 h-3 text-emerald-600" /> {getIdeaTitle(p)} <span className="opacity-50">({p.employeeName})</span>
                                </li>
                              ))}
                            </ul>
@@ -735,7 +745,7 @@ const IdeaCard = ({ idea, isManager, canApprove, onStatus, onComment, onUpdateCo
                   </div>
                 )}
 
-                {/* Actions for Managers - EDIT and DELETE added */}
+                {/* Actions for Managers */}
                 {isManager && (
                   <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-100">
                      <Button variant="secondary" onClick={() => onEditIdea(idea)} className="h-8 text-xs">
@@ -1556,6 +1566,8 @@ const EmployeePortal = ({ currentUser, showToast }) => {
   );
 };
 
+// --- Missing Components Restored ---
+
 const ManagerPortal = ({ currentUser, showToast }) => {
   const [ideas, setIdeas] = useState([]);
   const [filter, setFilter] = useState('all');
@@ -1666,7 +1678,7 @@ const ManagerPortal = ({ currentUser, showToast }) => {
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {displayedIdeas.map(idea => (
           <IdeaCard 
             key={idea.id} 
@@ -1684,7 +1696,7 @@ const ManagerPortal = ({ currentUser, showToast }) => {
             onDeleteIdea={handleDeleteIdea}
           />
         ))}
-        {displayedIdeas.length === 0 && (<div className="p-16 text-center border-2 border-dashed border-slate-300 rounded-sm bg-slate-50"><div className="text-slate-400 font-bold uppercase tracking-widest text-xs">No pending items in queue.</div></div>)}
+        {displayedIdeas.length === 0 && (<div className="col-span-full p-16 text-center border-2 border-dashed border-slate-300 rounded-sm bg-slate-50"><div className="text-slate-400 font-bold uppercase tracking-widest text-xs">No pending items in queue.</div></div>)}
       </div>
 
       {/* Manager Edit Modal */}
